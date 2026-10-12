@@ -898,7 +898,7 @@
                 (if (or (not (fboundp (car x)))(eq (symbol-function (car x)) (cadr x)))
                     (push (car x) undefined)))
               (when undefined
-                (format *error-output* ";;; Warning: the following function(s) are called from forms~%~")
+                (format *error-output* ";;; Warning: the following function(s) are called from forms~%")
                 (format *error-output* ";;; in file \"~A\" but have not yet been defined:~%" path)
                 (dolist (s undefined)
                   (format *error-output* ";;;     ~S~%" s)))))
