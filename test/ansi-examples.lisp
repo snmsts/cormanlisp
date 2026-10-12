@@ -5,9 +5,14 @@
 
 (in-package "COMMON-LISP-USER")
 
+(defvar *passed-count* 0)
+(defvar *failed-count* 0)
+
 (defun passed-test (expr result)
+	(incf *passed-count*)
 	(format t "PASSED: ~S => ~S~%" expr result))
 (defun failed-test (expr result expected-result)
+	(incf *failed-count*)
 	(format t "**************~%FAILED: ~S => ~S  Expected: ~S~%**************~%" 
 		expr result expected-result))
 

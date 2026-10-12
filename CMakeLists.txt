@@ -226,3 +226,14 @@ if(CORMANLISP_BUILD_IMAGE)
 else()
   add_custom_target(image DEPENDS "${_image}")
 endif()
+
+#
+# Tests: cmake --build build --config Standard, then
+#        ctest --test-dir build -C Standard
+#
+enable_testing()
+add_test(NAME lisp-tests
+  COMMAND clconsole -execute test/run-tests.lisp
+  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+# A Lisp error outside the tests leaves clconsole in its debug loop.
+set_tests_properties(lisp-tests PROPERTIES TIMEOUT 300)

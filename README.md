@@ -25,6 +25,12 @@ stubs used by `SAVE-APPLICATION` and `CormanLisp.img` at the top of the
 source tree, next to `Sys/`, where they expect to find each other.
 `makeimg.bat` rebuilds only the image.
 
+The tests in `test/` are run with
+
+    ctest --test-dir build -C Standard
+
+or directly with `clconsole -execute test\run-tests.lisp`.
+
 There is a single build configuration, `Standard`. The kernel is compiled
 without optimization on purpose: the garbage collector depends on the
 shape of the code the C++ compiler generates.
