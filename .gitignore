@@ -42,3 +42,5 @@ installer/LICENSE.rtf
 unpacked/*
 CormanLisp*.zip
 
+# CMake build tree
+build/
