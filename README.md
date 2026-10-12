@@ -11,6 +11,42 @@ From the [Corman Lisp 'Features' page](http://www.cormanlisp.com/features.html):
 
 Corman Lisp works on Windows XP SP3 and newer. It is also reported to [work on Linux via Wine](https://appdb.winehq.org/objectManager.php?sClass=application&iId=4751).
 
+## Building
+
+The Lisp kernel, the console front end and the Lisp image are built with
+CMake and the 32-bit Microsoft C++ compiler (Visual Studio 2022, toolset
+v143):
+
+    cmake -S . -B build -G "Visual Studio 17 2022" -A Win32
+    cmake --build build --config Standard
+
+This places `clconsole.exe`, `CormanLispServer.dll`, the application
+stubs used by `SAVE-APPLICATION` and `CormanLisp.img` at the top of the
+source tree, next to `Sys/`, where they expect to find each other.
+`makeimg.bat` rebuilds only the image.
+
+There is a single build configuration, `Standard`. The kernel is compiled
+without optimization on purpose: the garbage collector depends on the
+shape of the code the C++ compiler generates.
+
+zlib is not part of this repository. Its sources are downloaded when
+CMake configures the build; pass `-DCORMANLISP_SYSTEM_ZLIB=ON` to use an
+installed 32-bit zlib instead.
+
+The IDE (`CormanLispIDE`) and the installer are not part of the CMake
+build yet.
+
+### Libraries needed at run time
+
+Some modules load third-party DLLs which are no longer kept in this
+repository. They have to be 32-bit and on the DLL search path, for
+instance next to `clconsole.exe`:
+
+* `Modules/ssl-sockets.lisp` needs `libssl-1_1.dll` and
+  `libcrypto-1_1.dll` from OpenSSL 1.1.
+* `Modules/rdnzl.lisp` needs `RDNZL.dll` from the
+  [RDNZL](https://weitz.de/rdnzl/) distribution.
+
 ## Source release history
 
 In June 2013, Zach Beane contacted Roger Corman about the future of
