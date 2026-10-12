@@ -596,6 +596,9 @@ __declspec(naked) void EnterGCCriticalSection()
         push	ebp
         mov		ebp, esp
         push    edi
+        push    esi
+        call    ThreadQV    ;; callers in C++ code cannot guarantee esi
+        mov     esi, eax
 	}
 	LISP_TO_FOREIGN()
 	
@@ -611,6 +614,7 @@ __declspec(naked) void EnterGCCriticalSection()
 	FOREIGN_RETURN_TO_LISP()
 	__asm
 	{
+        pop     esi
         pop     edi
         pop		ebp
         ret
@@ -624,6 +628,9 @@ __declspec(naked) void LeaveGCCriticalSection()
         push	ebp
         mov		ebp, esp
         push    edi
+        push    esi
+        call    ThreadQV    ;; callers in C++ code cannot guarantee esi
+        mov     esi, eax
 	}
 	LISP_TO_FOREIGN()
 
@@ -640,6 +647,7 @@ __declspec(naked) void LeaveGCCriticalSection()
 
 	__asm
 	{
+        pop     esi
         pop     edi
         pop		ebp
         ret
