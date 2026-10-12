@@ -46,12 +46,10 @@
 			    (FORMAT T "~&~2TFailed: ~S~%~4Tresult: ~S~%~4Tdoes not pass: ~S~%"
 				    ',test ,foobar ',expected))))
 		       ((eq :error expected)
-			;; The following should be fixed when exceptions are in place.
 			`(LET ((,foobar T))
-			  (FORMAT T "~&An error is expected now:~%")
-			  (CATCH 'COMMON-LISP::%ERROR
-			    ,@test
-			    (SETQ ,foobar NIL))
+			  (HANDLER-CASE
+			      (PROGN ,@test (SETQ ,foobar NIL))
+			    (ERROR () NIL))
 			  (UNLESS ,foobar
 			    (INCF ,problems)
 			    (FORMAT T "~&~2TFailed: ~S~&~4Texpected error not signaled.~%"
