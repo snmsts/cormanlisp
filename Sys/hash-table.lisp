@@ -400,7 +400,7 @@
         
         ;; catch most common case quickly, when the entry we are looking for 
         ;; is at the beginning of the list (usually it will be the only one)
-        (when (funcall test-func key hkey)
+        (when (and list (funcall test-func key hkey))
             (decf (hash-table-count hash-table))
             (setf (elt (hash-table-table hash-table) index) (cddr list))
             (return-from remhash t))
@@ -409,7 +409,7 @@
     	(do* ((x list (cddr x))
               (y (cddr list) (cddr y))
     		  (hkey (car y) (car y)))
-            ((null list) nil)
+            ((null y) nil)
             (if (consp hkey)
                 (setq hkey (car hkey)))
             (when (funcall test-func key hkey)
