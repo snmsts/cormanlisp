@@ -56,4 +56,4 @@
 
 (format t "~&### ~:[~D problem(s)~;All tests passed~]~%" (zerop *problems*) *problems*)
 (force-output)
-(win:ExitProcess (if (zerop *problems*) 0 1))
+(cl::os-exit-process (if (zerop *problems*) 0 1))

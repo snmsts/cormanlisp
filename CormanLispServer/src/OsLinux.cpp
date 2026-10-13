@@ -8,13 +8,16 @@
 //
 
 #include "Stdafx.h"
+#include <dirent.h>
 #include <dlfcn.h>
 #include <fcntl.h>
+#include <fnmatch.h>
 #include <malloc.h>
 #include <pwd.h>
 #include <time.h>
 #include <unistd.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/time.h>
 
@@ -580,10 +583,25 @@ bool osFileTimeToTime(unsigned __int64 fileTime, OsTime* time)
 //
 //	Files
 //
-OsFile osOpenFile(const char* path, bool forWriting)
+OsFile osOpenFile(const char* path, int access, int mode)
 {
-	int fd = forWriting ? open(path, O_WRONLY | O_CREAT | O_TRUNC, 0666) : open(path, O_RDONLY);
-	return fd < 0 ? OsNoFile : (OsFile)(long)fd;
+	int flags = (access & OsWriteAccess) ? ((access & OsReadAccess) ? O_RDWR : O_WRONLY) : O_RDONLY;
+	struct stat status;
+	int fd = -1;
+	if (mode == OsCreateAlways)
+		flags |= O_CREAT | O_TRUNC;
+	else if (mode == OsOpenAlways)
+		flags |= O_CREAT;
+	fd = open(path, flags, 0666);
+	if (fd < 0)
+		return OsNoFile;
+	if (fstat(fd, &status) == 0 && S_ISDIR(status.st_mode))
+	{
+		close(fd);
+		errno = EISDIR;
+		return OsNoFile;
+	}
+	return (OsFile)(long)fd;
 }
 
 bool osCloseFile(OsFile file)
@@ -614,6 +632,225 @@ bool osWriteFile(OsFile file, const void* buffer, unsigned long size, unsigned l
 	}
 	*sizeWritten = done;
 	return done == size;
+}
+
+unsigned long osFileSize(OsFile file)
+{
+	struct stat status;
+	if (fstat((int)(long)file, &status) != 0)
+		return (unsigned long)-1;
+	return (unsigned long)status.st_size;
+}
+
+long osSeekFile(OsFile file, long offset, bool fromEnd)
+{
+	return (long)lseek((int)(long)file, offset, fromEnd ? SEEK_END : SEEK_SET);
+}
+
+bool osDeleteFile(const char* path)
+{
+	return unlink(path) == 0;
+}
+
+//	The seconds from the start of 1601 to the start of 1970.
+static const unsigned __int64 FileTimeSecondsTo1970 = 11644473600ULL;
+
+static unsigned __int64 fromTimespec(const struct timespec* time)
+{
+	return ((unsigned __int64)time->tv_sec + FileTimeSecondsTo1970) * 10000000
+		+ (unsigned __int64)time->tv_nsec / 100;
+}
+
+static void toTimespec(unsigned __int64 from, struct timespec* time)
+{
+	time->tv_sec = (time_t)(from / 10000000 - FileTimeSecondsTo1970);
+	time->tv_nsec = (long)(from % 10000000) * 100;
+}
+
+bool osFileTimes(OsFile file, unsigned __int64* created,
+	unsigned __int64* accessed, unsigned __int64* written)
+{
+	struct stat status;
+	if (fstat((int)(long)file, &status) != 0)
+		return false;
+	*created = fromTimespec(&status.st_ctim);
+	*accessed = fromTimespec(&status.st_atim);
+	*written = fromTimespec(&status.st_mtim);
+	return true;
+}
+
+bool osSetFileTimes(OsFile file, const unsigned __int64* created,
+	const unsigned __int64* accessed, const unsigned __int64* written)
+{
+	struct timespec times[2];
+	toTimespec(*accessed, &times[0]);
+	toTimespec(*written, &times[1]);
+	return futimens((int)(long)file, times) == 0;
+}
+
+unsigned long osFileAttributes(const char* path)
+{
+	struct stat status;
+	unsigned long attributes = 0;
+	if (stat(path, &status) != 0)
+		return (unsigned long)-1;
+	if (S_ISDIR(status.st_mode))
+		attributes |= OsFileDirectory;
+	if (!(status.st_mode & S_IWUSR))
+		attributes |= OsFileReadOnly;
+	return attributes ? attributes : OsFileNormal;
+}
+
+bool osSetFileAttributes(const char* path, unsigned long attributes)
+{
+	struct stat status;
+	mode_t mode = 0;
+	if (stat(path, &status) != 0)
+		return false;
+
+	// all that can be set is whether the file can be written
+	mode = status.st_mode & 07777;
+	if (attributes & OsFileReadOnly)
+		mode &= ~(S_IWUSR | S_IWGRP | S_IWOTH);
+	else
+		mode |= S_IWUSR;
+	return chmod(path, mode) == 0;
+}
+
+unsigned long osFullPath(const char* path, char* fullPath, unsigned long size)
+{
+	char from[4096];
+	unsigned long length = 0;
+	const char* p = from;
+
+	// start from the current directory unless the path starts from the root
+	if (path[0] == '/')
+		from[0] = 0;
+	else if (!getcwd(from, sizeof(from)))
+		return 0;
+	if (strlen(from) + 1 + strlen(path) + 1 > sizeof(from))
+		return 0;
+	strcat(from, "/");
+	strcat(from, path);
+
+	// copy the names, leaving out "." and backing up over ".."
+	if (size < 2)
+		return 0;
+	while (*p)
+	{
+		const char* end = 0;
+		unsigned long n = 0;
+		while (*p == '/')
+			p++;
+		end = strchr(p, '/');
+		n = end ? (unsigned long)(end - p) : strlen(p);
+		if (n == 2 && p[0] == '.' && p[1] == '.')
+		{
+			while (length > 0 && fullPath[--length] != '/')
+				;
+		}
+		else if (n > 0 && !(n == 1 && p[0] == '.'))
+		{
+			if (length + 1 + n + 1 > size)
+				return 0;
+			fullPath[length++] = '/';
+			memcpy(fullPath + length, p, n);
+			length += n;
+		}
+		p += n;
+	}
+
+	// a path which ends with a separator names a directory, and stays so
+	if (length == 0 || (p > from && p[-1] == '/' && length + 2 <= size))
+		fullPath[length++] = '/';
+	fullPath[length] = 0;
+	return length;
+}
+
+//
+//	Directories
+//
+bool osCurrentDirectory(char* path, unsigned long size)
+{
+	return getcwd(path, size) != 0;
+}
+
+bool osSetCurrentDirectory(const char* path)
+{
+	return chdir(path) == 0;
+}
+
+bool osCreateDirectory(const char* path)
+{
+	return mkdir(path, 0777) == 0;
+}
+
+bool osMoveFile(const char* from, const char* to)
+{
+	return rename(from, to) == 0;
+}
+
+struct FileSearch
+{
+	DIR* directory;
+	char path[4096];		// of the directory, ending with its separator
+	char pattern[256];
+};
+
+OsFileSearch osFindFirstFile(const char* pattern, OsFoundFile* found)
+{
+	FileSearch* search = 0;
+	const char* name = strrchr(pattern, '/');
+	size_t pathLength = name ? (size_t)(name + 1 - pattern) : 0;
+	name = name ? name + 1 : pattern;
+	if (pathLength >= sizeof(search->path) || strlen(name) >= sizeof(search->pattern))
+		return 0;
+
+	search = (FileSearch*)malloc(sizeof(FileSearch));
+	memcpy(search->path, pattern, pathLength);
+	search->path[pathLength] = 0;
+
+	// what stands for every name on Windows, where a name has a dot or is
+	// taken to end with one
+	strcpy(search->pattern, strcmp(name, "*.*") == 0 ? "*" : name);
+
+	search->directory = opendir(pathLength ? search->path : ".");
+	if (search->directory && osFindNextFile(search, found))
+		return search;
+	osFindClose(search);
+	return 0;
+}
+
+bool osFindNextFile(OsFileSearch search, OsFoundFile* found)
+{
+	FileSearch* s = (FileSearch*)search;
+	struct dirent* entry = 0;
+	while ((entry = readdir(s->directory)) != 0)
+	{
+		char path[sizeof(s->path) + sizeof(entry->d_name)];
+		struct stat status;
+		if (fnmatch(s->pattern, entry->d_name, 0) != 0 || strlen(entry->d_name) >= sizeof(found->name))
+			continue;
+		strcpy(path, s->path);
+		strcat(path, entry->d_name);
+		if (stat(path, &status) != 0)
+			memset(&status, 0, sizeof(status));
+		found->isDirectory = S_ISDIR(status.st_mode) ? 1 : 0;
+		found->size = (unsigned long)status.st_size;
+		strcpy(found->name, entry->d_name);
+		return true;
+	}
+	return false;
+}
+
+void osFindClose(OsFileSearch search)
+{
+	FileSearch* s = (FileSearch*)search;
+	if (!s)
+		return;
+	if (s->directory)
+		closedir(s->directory);
+	free(s);
 }
 
 //
@@ -657,6 +894,11 @@ void* osProcessHandle()
 	return (void*)(long)getpid();
 }
 
+void osExitProcess(unsigned code)
+{
+	exit((int)code);
+}
+
 unsigned long osModulePath(void* module, char* path, unsigned long size)
 {
 	ssize_t length = 0;
@@ -667,11 +909,6 @@ unsigned long osModulePath(void* module, char* path, unsigned long size)
 		length = 0;
 	path[length] = 0;
 	return (unsigned long)length;
-}
-
-bool osSetCurrentDirectory(const char* path)
-{
-	return chdir(path) == 0;
 }
 
 void osMarkKernelLoaded()

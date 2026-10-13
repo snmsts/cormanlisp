@@ -41,11 +41,11 @@ BOOL WINAPI QueryPerformanceFrequency(PLARGE_INTEGER);
                 (- (+ 1 (lognot total)))))))
             
 (defun cl::get-internal-run-time ()
-    (win:QueryPerformanceCounter internal-run-time-buffer)
+    (os-performance-counter internal-run-time-buffer)
     (large-integer-to-lisp-integer internal-run-time-buffer))
 
 (defun cl::get-internal-time-units-per-second ()
-    (win:QueryPerformanceFrequency internal-time-units-buffer)
+    (os-performance-frequency internal-time-units-buffer)
     (large-integer-to-lisp-integer internal-time-units-buffer))
 
 (defvar calibration-value -1)
@@ -195,6 +195,21 @@ BOOL WINAPI QueryPerformanceFrequency(PLARGE_INTEGER);
 ;;;    daylight-flag (t if daylight time, nil if standard time)
 ;;;    time-zone-name (string)
 ;;;                    
+#-os-windows
+(defun cl::local-time-zone ()
+	(ct:with-fresh-foreign-block (minutes-west :long)
+		(ct:with-fresh-foreign-block (daylight :long)
+			(if (os-time-zone minutes-west daylight)
+				(let* ((daylight-p (/= (ct:cref (:long *) daylight 0) 0))
+					   (name (if daylight-p "Daylight" "Standard")))
+					(unless local-time-zone-name
+						(setf local-time-zone-name name))
+					(values (- (truncate (ct:cref (:long *) minutes-west 0) 60) (if daylight-p 1 0))
+							daylight-p
+							name))
+				(values 0 nil "Unknown")))))
+
+#+os-windows
 (defun cl::local-time-zone ()
 	(ct:with-fresh-foreign-block (tzi 'win:TIME_ZONE_INFORMATION)
 		(ct:with-c-struct (s tzi win:TIME_ZONE_INFORMATION)

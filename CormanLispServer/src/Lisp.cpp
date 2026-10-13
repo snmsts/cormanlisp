@@ -849,7 +849,7 @@ inputFileStreamNode(LispObj path)
 	LispObj s = 0;
 	OsFile handle = 0;
 	
-	handle = osOpenFile((char*)byteArrayStart(nullTerminate(path)), false);
+	handle = osOpenFile((char*)byteArrayStart(nullTerminate(path)), OsReadAccess, OsOpenExisting);
 
 	if (handle == OsNoFile)
 		Error("Could not open file ~A for reading, error code = ~A", 
@@ -893,7 +893,7 @@ outputFileStreamNode(LispObj path)
 	LispObj s = 0;
 	OsFile handle = 0;
 	
-	handle = osOpenFile((char*)byteArrayStart(nullTerminate(path)), true);
+	handle = osOpenFile((char*)byteArrayStart(nullTerminate(path)), OsWriteAccess, OsCreateAlways);
 
 	if (handle == OsNoFile)
 		Error("Could not open file ~A for writing, error code = ~A", 

@@ -97,22 +97,22 @@
 		  (directory (pathname-internal-directory pathname))
 		  (type (pathname-internal-type pathname))
 		  (name (pathname-internal-name pathname)))
-		(format nil "~{~A:~}~{~A~}~{~A\\~}~{~A~}~{.~A~}"
+		(format nil "~{~A:~}~{~A~}~{~A~}~{~A~}~{.~A~}"
 			(if device (list device) nil)
 			(if (eq (car directory) :absolute)
-				'(#\\) nil)
-			(cdr directory)
+				(list cl::os-directory-separator) nil)
+			(mapcan #'(lambda (d) (list d cl::os-directory-separator)) (cdr directory))
 			(if name (list name) nil)
 			(if type (list type) nil))))
 
 (defun convert-pathname-to-directory-namestring (pathname)
 	(let ((device (pathname-internal-device pathname))
 		  (directory (pathname-internal-directory pathname)))
-		(format nil "~{~A:~}~{~A~}~{~A\\~}"
+		(format nil "~{~A:~}~{~A~}~{~A~}"
 			(if device (list device) nil)
 			(if (eq (car directory) :absolute)
-				'(#\\) nil)
-			(cdr directory))))
+				(list cl::os-directory-separator) nil)
+			(mapcan #'(lambda (d) (list d cl::os-directory-separator)) (cdr directory)))))
 
 (defun logical-host-p (host) (declare (ignore host)) nil)		; not support for logical hosts currently
 (defun parse-logical-pathname-namestring (thing start end junk-allowed host)
@@ -380,23 +380,10 @@
 		(make-pathname :host host :device device :directory directory
 			:name name :type type :version version)))
 
-(ct:defun-dll GetFullPathName ((lpFileName (:unsigned-char *)) 
-							(nBufferLength :long) 
-							(lpBuffer (:unsigned-char *))
-							(lpFilePart ((:unsigned-char *) *)))
-   :return-type :long
-   :library-name "kernel32.dll"
-   :entry-name "GetFullPathNameA"
-   :linkage-type :pascal)
-
 (defun get-full-path-name (name)
 	(let ((fname (ct:create-c-string (namestring name)))
 		  (buf (ct:malloc 256)))
-		(GetFullPathName 
-			fname 
-			256 
-			buf 
-			(ct::create-foreign-ptr))
+		(cl::os-full-path fname buf 256)
 		(values (parse-namestring (ct:c-string-to-lisp-string buf)))))
 
 ;;;

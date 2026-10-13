@@ -7114,23 +7114,17 @@
 
 ;;; Redefine ALLOCATE-C-HEAP and DEALLOCATE-C-HEAP
 
-(ct:defun-dll ct::heap-alloc ((heap :handle)(flags :unsigned-long)(size :unsigned-long))
-   :return-type (:void *)
-   :library-name "Kernel32.dll"
-   :entry-name "HeapAlloc"
-   :linkage-type :pascal)
+;;; The kernel has the one heap there is, so which heap and how are not asked.
+(defun ct::heap-alloc (heap flags size)
+	(declare (ignore heap flags))
+	(cl::os-heap-allocate size))
 
-(ct:defun-dll ct::heap-free ((heap :handle)(flags :unsigned-long)(mem (:void *)))
-   :return-type :long-bool
-   :library-name "Kernel32.dll"
-   :entry-name "HeapFree"
-   :linkage-type :pascal)
+(defun ct::heap-free (heap flags mem)
+	(declare (ignore heap flags))
+	(cl::os-heap-free mem)
+	t)
 
-(ct:defun-dll ct::get-process-heap ()
-   :return-type :handle
-   :library-name "Kernel32.dll"
-   :entry-name "GetProcessHeap"
-   :linkage-type :pascal)
+(defun ct::get-process-heap () nil)
 
 (defasm ct::c-allocate (size)
     {

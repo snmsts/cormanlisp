@@ -50,6 +50,7 @@
 (load-file "sys/parse-c-decls.lisp")
 (load-file "sys/win32.lisp")
 (load-file "sys/win-conditions.lisp")
+(load-file "sys/os.lisp")
 (load-file "sys/com.lisp")
 (load-file "sys/winsock.lisp")
 (load-file "sys/time.lisp")

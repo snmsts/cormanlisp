@@ -191,16 +191,11 @@
 ;;;
 (defun probe-file (file)
 	(let* ((truename (truename (pathname file)))
-		   (ret (win:CreateFile (ct:create-c-string (namestring truename))
-					win:GENERIC_READ 
-					win:FILE_SHARE_READ 
-					NULL
-					win:OPEN_EXISTING 
-					win:FILE_ATTRIBUTE_NORMAL 
-					NULL)))
-		(if (ct:cpointer= ret (ct:int-to-foreign-ptr win:INVALID_HANDLE_VALUE))
+		   (ret (os-open-file (ct:create-c-string (namestring truename))
+					os-read-access os-open-existing)))
+		(if (= ret os-no-file)
 			(return-from probe-file nil))
-		(win:CloseHandle ret)
+		(os-close-file ret)
 		truename))
 
 ;; these are defined later
@@ -269,7 +264,7 @@
 				((nil) 				(return-from open nil))))
 				
 		(let* ((s (alloc-uvector stream-size uvector-stream-tag))
-			   access attributes share-mode create-mode)
+			   access create-mode)
 			(setf (uref s stream-name-offset) 			pn
 				  (uref s stream-underflow-func-offset) nil
 				  (uref s stream-overflow-func-offset) 	nil
@@ -313,39 +308,24 @@
 					(setf (uref s stream-output-buffer-length-offset) 0)
 					(setf (uref s stream-output-buffer-pos-offset) 0)))
  
-			;; set access, attributes, share-mode, create-mode
+			;; set access, create-mode
 			(case direction
-				(:input (setq access win:GENERIC_READ)
-						(setq attributes win:FILE_ATTRIBUTE_NORMAL)
-						(setq share-mode win:FILE_SHARE_READ)
-						(setq create-mode win:OPEN_EXISTING))
-				(:output (setq access win:GENERIC_WRITE)
-						(setq attributes win:FILE_ATTRIBUTE_NORMAL)
-						(setq share-mode win:FILE_SHARE_READ)
+				(:input (setq access os-read-access)
+						(setq create-mode os-open-existing))
+				(:output (setq access os-write-access)
 						(setq create-mode 
 							(if (or overwrite append) 
-								win:OPEN_ALWAYS 
-								win:CREATE_ALWAYS)))
+								os-open-always 
+								os-create-always)))
 				(:bidirectional 	
-						(setq access (logior win:GENERIC_READ win:GENERIC_WRITE))
-						(setq attributes win:FILE_ATTRIBUTE_NORMAL)
-						(setq share-mode win:FILE_SHARE_READ)
-						(setq create-mode win:OPEN_EXISTING))
+						(setq access (logior os-read-access os-write-access))
+						(setq create-mode os-open-existing))
 				(:probe (setq access 0)
-						(setq attributes win:FILE_ATTRIBUTE_NORMAL)
-						(setq share-mode win:FILE_SHARE_READ)
-						(setq create-mode win:OPEN_EXISTING)))
+						(setq create-mode os-open-existing)))
 				
 			(setf (uref s stream-handle-offset)
-				(cl::foreign-ptr-to-int 
-					(win:CreateFile (ct:create-c-string (namestring pn))
-						access 
-						share-mode 
-						NULL
-						create-mode 
-						attributes 
-						NULL)))
-			(if (= (uref s stream-handle-offset) win:INVALID_HANDLE_VALUE)
+				(os-open-file (ct:create-c-string (namestring pn)) access create-mode))
+			(if (= (uref s stream-handle-offset) os-no-file)
 				(error (make-condition 'FILE-ERROR :pathname pn 
 						:format-control "Could not open stream ~A for ~A access."
 						:format-arguments (list filespec direction))))
@@ -457,11 +437,11 @@
 	(if (file-stream-p stream)
 		(let ((ret
 			  	(cond ((integerp position)
-				       (win:SetFilePointer (stream-handle stream) position NULL win:FILE_BEGIN))
+				       (os-seek-file (stream-handle stream) position 0))
 				      ((eq position ':start)
-				       (win:SetFilePointer (stream-handle stream) 0 NULL win:FILE_BEGIN))
+				       (os-seek-file (stream-handle stream) 0 0))
 				      ((eq position ':end)
-				       (win:SetFilePointer (stream-handle stream) 0 NULL win:FILE_END)))))
+				       (os-seek-file (stream-handle stream) 0 1)))))
 			(if (= ret -1)
 				nil 
 				(setf (stream-position stream) ret)))
@@ -1033,7 +1013,7 @@
     	(let ((handle (stream-win-handle stream)))
     		(unless handle
     			(cl::signal-type-error stream 'file-stream))
-    		(win:GetFileSize handle ct:null))))
+    		(os-file-size (cl::stream-handle stream)))))
 
 (defun low-word (integer) (mod integer #x100000000))
 (defun high-word (integer) (truncate integer #x100000000))
@@ -1042,7 +1022,7 @@
 	(let ((creation-time (ct:malloc (ct:sizeof 'win:FILETIME)))
 		  (last-access-time (ct:malloc (ct:sizeof 'win:FILETIME)))
 		  (last-write-time (ct:malloc (ct:sizeof 'win:FILETIME))))
-		(win:GetFileTime (cl::stream-win-handle stream) 
+		(os-file-times (cl::stream-handle stream)
 			creation-time last-access-time last-write-time)
 		(values
 			(+ (ct:cref win:FILETIME creation-time win::dwLowDateTime)
@@ -1062,7 +1042,7 @@
 		(setf (ct:cref win:FILETIME last-access-time win::dwHighDateTime)(high-word last-access))
 		(setf (ct:cref win:FILETIME last-write-time win::dwLowDateTime)(low-word last-write))
 		(setf (ct:cref win:FILETIME last-write-time win::dwHighDateTime)(high-word last-write))	
-		(win:SetFileTime (cl::stream-win-handle stream) 
+		(os-set-file-times (cl::stream-handle stream)
 			creation-time last-access-time last-write-time)))
 #|
 (defun file-time-to-system-timex (file-time)
@@ -1109,7 +1089,7 @@
 ;;;
 ;;;	Common Lisp SLEEP function.
 ;;;
-(defun sleep (seconds) (win:%Sleep (truncate (* seconds 1000))))
+(defun sleep (seconds) (os-sleep (truncate (* seconds 1000))))
 
 ;;;
 ;;;	Corman Lisp FILE-STREAM-NAME function.
@@ -1130,7 +1110,7 @@
 				(setf filespec (file-stream-name filespec)))
 			(error "Not a FILE-STREAM: ~S" filespec)))
 	(let ((path (pathname filespec)))
-		(win:DeleteFile (ct:lisp-string-to-c-string (namestring path)))))
+		(os-delete-file (ct:lisp-string-to-c-string (namestring path)))))
 
 ;;;
 ;;;	Common Lisp FORCE-OUTPUT function.
@@ -1197,10 +1177,10 @@
 				(dotimes (i bytes-to-write)
 					(setf (ct:cref (byte *) buf i) (elt output-bytes i)))
 				(unless (or (= bytes-to-write 0)
-							(win:WriteFile (ct:int-to-foreign-ptr (stream-handle s))
-						 buf bytes-to-write bytes-written NULL))
+							(os-write-file (stream-handle s)
+						 buf bytes-to-write bytes-written))
 					(error "Could not write to file ~A. ~A"
-						s (win:system-error-text (win:GetLastError))))
+						s (os-error-text (os-last-error))))
 				(setf (stream-output-buffer-pos s) 0)
 				(ct:cref (:unsigned-long 1) bytes-written 0)))))			
 
@@ -1224,10 +1204,10 @@
 			input-bytes)
 		(ct:with-fresh-foreign-block (bytes-read ':unsigned-long)
 			(ct:with-fresh-foreign-block (buf `(byte ,bytes-to-read))
-				(unless (win:ReadFile (ct:int-to-foreign-ptr (stream-handle s))
-							 buf bytes-to-read bytes-read NULL)
+				(unless (os-read-file (stream-handle s)
+							 buf bytes-to-read bytes-read)
 						(error "Could not read from file ~A, error code = ~A"
-							s (win:GetLastError)))
+							s (os-last-error)))
 				(if (stream-binary s)
 					(progn
 						(setf input-bytes (ct:cref (:unsigned-long 1) bytes-read 0))
@@ -1314,14 +1294,14 @@
 ;;;	Gets the file attributes (as an integer) of the passed file name or path.
 ;;;
 (defun ccl::get-file-attributes (name)
-	(win:getfileattributes (ct:lisp-string-to-c-string (namestring name))))
+	(os-file-attributes (ct:lisp-string-to-c-string (namestring name))))
 
 ;;;
 ;;; Corman Lisp SET-FILE-ATTRIBUTES function.
 ;;;	Sets the file attributes (as an integer) of the passed file name or path.
 ;;;
 (defun ccl::set-file-attributes (name attributes)
-	(win:setfileattributes (ct:lisp-string-to-c-string (namestring name)) attributes))
+	(os-set-file-attributes (ct:lisp-string-to-c-string (namestring name)) attributes))
 
 ;;;
 ;;; Corman Lisp DIRECTORY-P function.
@@ -1407,7 +1387,7 @@
         (progn
             (if (output-stream-p stream)
                 (force-output stream))
-            (let ((ret (win:CloseHandle (ct:int-to-foreign-ptr (cl::stream-handle stream)))))
+            (let ((ret (os-close-file (cl::stream-handle stream))))
                 (setf (cl::stream-open stream) nil)
                 ret))
         t)) 

@@ -206,14 +206,91 @@ extern bool osFileTimeToTime(unsigned __int64 fileTime, OsTime* time);
 typedef void* OsFile;
 #define OsNoFile ((OsFile)-1)
 
-//	Opens an existing file for reading, or creates an empty one for
-//	writing in place of whatever had that name. Returns OsNoFile on failure.
-extern OsFile osOpenFile(const char* path, bool forWriting);
+//	What a file is opened for: either, both, or neither, which only finds
+//	out whether it can be opened.
+const int OsReadAccess = 1;
+const int OsWriteAccess = 2;
+
+//	What opening does about the file being there or not.
+const int OsOpenExisting = 0;		// fails if there is no such file
+const int OsCreateAlways = 1;		// an empty file in place of any there was
+const int OsOpenAlways = 2;			// the file there is, or else a new one
+
+//	Returns OsNoFile on failure. A directory is not a file.
+extern OsFile osOpenFile(const char* path, int access, int mode);
 extern bool osCloseFile(OsFile file);
 
 //	At the end of the file osReadFile() succeeds with nothing read.
 extern bool osReadFile(OsFile file, void* buffer, unsigned long size, unsigned long* sizeRead);
 extern bool osWriteFile(OsFile file, const void* buffer, unsigned long size, unsigned long* sizeWritten);
+
+//	Returns (unsigned long)-1 on failure.
+extern unsigned long osFileSize(OsFile file);
+
+//	The next read or write is that many bytes from the start of the file,
+//	or from its end. Returns where that is from the start, -1 on failure.
+extern long osSeekFile(OsFile file, long offset, bool fromEnd);
+
+extern bool osDeleteFile(const char* path);
+
+//
+//	When a file was created, last read and last written, as file times
+//	(see osTimeToFileTime()). A system which does not keep the time of
+//	creation gives the time of the last change instead, and does not set it.
+//
+extern bool osFileTimes(OsFile file, unsigned __int64* created,
+	unsigned __int64* accessed, unsigned __int64* written);
+extern bool osSetFileTimes(OsFile file, const unsigned __int64* created,
+	const unsigned __int64* accessed, const unsigned __int64* written);
+
+//
+//	What a file is, as bits. The bits are the ones Windows has, of which
+//	these are known on every system.
+//
+const unsigned long OsFileReadOnly = 0x01;
+const unsigned long OsFileDirectory = 0x10;
+const unsigned long OsFileNormal = 0x80;		// none of the others
+
+//	Returns (unsigned long)-1 if there is no such file or directory.
+extern unsigned long osFileAttributes(const char* path);
+extern bool osSetFileAttributes(const char* path, unsigned long attributes);
+
+//	The path in full, from the root on down, whether or not there is such
+//	a file. Returns the length of the full path, 0 on failure.
+extern unsigned long osFullPath(const char* path, char* fullPath, unsigned long size);
+
+//
+//	Directories
+//
+extern bool osCurrentDirectory(char* path, unsigned long size);
+extern bool osSetCurrentDirectory(const char* path);
+extern bool osCreateDirectory(const char* path);
+
+//	Gives a file or a directory another name, which may be in another
+//	directory.
+extern bool osMoveFile(const char* from, const char* to);
+
+//
+//	Looking through a directory for the names which match a pattern. The
+//	pattern is a path, in the last part of which * stands for any
+//	characters and ? for any one. Lisp reads an OsFoundFile as it is laid
+//	out here.
+//
+struct OsFoundFile
+{
+	unsigned long isDirectory;
+	unsigned long size;
+	char name[260];
+};
+typedef void* OsFileSearch;
+
+//	Returns 0 if nothing matches. Otherwise the first match is in found,
+//	and the search is to be closed when it is done with.
+extern OsFileSearch osFindFirstFile(const char* pattern, OsFoundFile* found);
+
+//	Returns false when there are no more.
+extern bool osFindNextFile(OsFileSearch search, OsFoundFile* found);
+extern void osFindClose(OsFileSearch search);
 
 //
 //	Libraries loaded while running
@@ -237,11 +314,12 @@ extern unsigned long osProcessId();
 //	What the operating system's own functions know the process by.
 extern void* osProcessHandle();
 
+//	Ends the process. Does not return.
+extern void osExitProcess(unsigned code);
+
 //	The path of the file which a module was loaded from; the module 0 is
 //	the program. Returns the length of the path, 0 if it is not known.
 extern unsigned long osModulePath(void* module, char* path, unsigned long size);
-
-extern bool osSetCurrentDirectory(const char* path);
 
 //	Leaves a mark by which another program can tell that the kernel is
 //	loaded in this process.

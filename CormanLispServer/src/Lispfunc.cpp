@@ -1633,7 +1633,7 @@ LispFunction(Probe_File)
 	OsFile handle = 0;
 	checkString(path);
 	
-	handle = osOpenFile((char*)byteArrayStart(nullTerminate(path)), false);
+	handle = osOpenFile((char*)byteArrayStart(nullTerminate(path)), OsReadAccess, OsOpenExisting);
 
 	if (handle == OsNoFile)
 		ret = NIL;
@@ -4138,6 +4138,156 @@ LispFunction(Hardware_GC)
 	LISP_FUNC_RETURN(sym);
 }
 
+//
+//	The operating system layer as Lisp calls it, through its foreign
+//	function interface. Whether something worked is returned as 1 or 0.
+//
+static long lispOsOpenFile(const char* path, long access, long mode)
+{
+	return (long)osOpenFile(path, access, mode);
+}
+
+static long lispOsCloseFile(long file)
+{
+	return osCloseFile((OsFile)file) ? 1 : 0;
+}
+
+static long lispOsReadFile(long file, void* buffer, unsigned long size, unsigned long* sizeRead)
+{
+	return osReadFile((OsFile)file, buffer, size, sizeRead) ? 1 : 0;
+}
+
+static long lispOsWriteFile(long file, const void* buffer, unsigned long size, unsigned long* sizeWritten)
+{
+	return osWriteFile((OsFile)file, buffer, size, sizeWritten) ? 1 : 0;
+}
+
+static unsigned long lispOsFileSize(long file)
+{
+	return osFileSize((OsFile)file);
+}
+
+static long lispOsSeekFile(long file, long offset, long fromEnd)
+{
+	return osSeekFile((OsFile)file, offset, fromEnd != 0);
+}
+
+static long lispOsDeleteFile(const char* path)
+{
+	return osDeleteFile(path) ? 1 : 0;
+}
+
+static unsigned long lispOsFullPath(const char* path, char* fullPath, unsigned long size)
+{
+	return osFullPath(path, fullPath, size);
+}
+
+static long lispOsCurrentDirectory(char* path, unsigned long size)
+{
+	return osCurrentDirectory(path, size) ? 1 : 0;
+}
+
+static long lispOsSetCurrentDirectory(const char* path)
+{
+	return osSetCurrentDirectory(path) ? 1 : 0;
+}
+
+static long lispOsCreateDirectory(const char* path)
+{
+	return osCreateDirectory(path) ? 1 : 0;
+}
+
+static long lispOsMoveFile(const char* from, const char* to)
+{
+	return osMoveFile(from, to) ? 1 : 0;
+}
+
+static long lispOsFindFirstFile(const char* pattern, OsFoundFile* found)
+{
+	return (long)osFindFirstFile(pattern, found);
+}
+
+static long lispOsFindNextFile(long search, OsFoundFile* found)
+{
+	return osFindNextFile((OsFileSearch)search, found) ? 1 : 0;
+}
+
+static void lispOsFindClose(long search)
+{
+	osFindClose((OsFileSearch)search);
+}
+
+static void lispOsPerformanceCounter(__int64* count)
+{
+	*count = osPerformanceCounter();
+}
+
+static void lispOsPerformanceFrequency(__int64* frequency)
+{
+	*frequency = osPerformanceFrequency();
+}
+
+static long lispOsTimeZone(long* minutesWest, long* daylight)
+{
+	bool isDaylight = false;
+	if (!osTimeZone(minutesWest, &isDaylight))
+		return 0;
+	*daylight = isDaylight ? 1 : 0;
+	return 1;
+}
+
+static long lispOsFileTimes(long file, unsigned __int64* created,
+	unsigned __int64* accessed, unsigned __int64* written)
+{
+	return osFileTimes((OsFile)file, created, accessed, written) ? 1 : 0;
+}
+
+static long lispOsSetFileTimes(long file, const unsigned __int64* created,
+	const unsigned __int64* accessed, const unsigned __int64* written)
+{
+	return osSetFileTimes((OsFile)file, created, accessed, written) ? 1 : 0;
+}
+
+static unsigned long lispOsFileAttributes(const char* path)
+{
+	return osFileAttributes(path);
+}
+
+static long lispOsSetFileAttributes(const char* path, unsigned long attributes)
+{
+	return osSetFileAttributes(path, attributes) ? 1 : 0;
+}
+
+static void lispOsSleep(unsigned long milliseconds)
+{
+	osSleep(milliseconds);
+}
+
+static long lispOsCanRead(const void* address, unsigned long size)
+{
+	return osCanRead(address, size) ? 1 : 0;
+}
+
+static void* lispOsHeapAllocate(unsigned long size)
+{
+	return osHeapAllocate(size);
+}
+
+static void lispOsHeapFree(void* memory)
+{
+	osHeapFree(memory);
+}
+
+static void lispOsExitProcess(unsigned long code)
+{
+	osExitProcess(code);
+}
+
+static unsigned long lispOsLastError()
+{
+	return osLastError();
+}
+
 //	Lisp calls this as it would call a function of the operating system.
 static void* __stdcall loadLibraryForLisp(const char* path)
 {
@@ -4465,6 +4615,36 @@ FunctEntry functTable[] =
 	{	"UPDATE-JUMP-TABLE",		UpdateJumpTable			},
     {   "%UNASSEMBLE",              (LispFunc)unassemble    },  // defined in Lisp via FFI
     {   "%LOADLIBRARY",             (LispFunc)loadLibraryForLisp },  // defined in Lisp via FFI
+
+	// the operating system layer, defined in Lisp via FFI (in os.lisp)
+	{	"%OS-OPEN-FILE",			(LispFunc)lispOsOpenFile	},
+	{	"%OS-CLOSE-FILE",			(LispFunc)lispOsCloseFile	},
+	{	"%OS-READ-FILE",			(LispFunc)lispOsReadFile	},
+	{	"%OS-WRITE-FILE",			(LispFunc)lispOsWriteFile	},
+	{	"%OS-FILE-SIZE",			(LispFunc)lispOsFileSize	},
+	{	"%OS-SEEK-FILE",			(LispFunc)lispOsSeekFile	},
+	{	"%OS-DELETE-FILE",			(LispFunc)lispOsDeleteFile	},
+	{	"%OS-FULL-PATH",			(LispFunc)lispOsFullPath	},
+	{	"%OS-CURRENT-DIRECTORY",	(LispFunc)lispOsCurrentDirectory	},
+	{	"%OS-SET-CURRENT-DIRECTORY",(LispFunc)lispOsSetCurrentDirectory	},
+	{	"%OS-CREATE-DIRECTORY",	(LispFunc)lispOsCreateDirectory	},
+	{	"%OS-MOVE-FILE",			(LispFunc)lispOsMoveFile	},
+	{	"%OS-FIND-FIRST-FILE",		(LispFunc)lispOsFindFirstFile	},
+	{	"%OS-FIND-NEXT-FILE",		(LispFunc)lispOsFindNextFile	},
+	{	"%OS-FIND-CLOSE",			(LispFunc)lispOsFindClose	},
+	{	"%OS-PERFORMANCE-COUNTER",	(LispFunc)lispOsPerformanceCounter	},
+	{	"%OS-PERFORMANCE-FREQUENCY",(LispFunc)lispOsPerformanceFrequency	},
+	{	"%OS-TIME-ZONE",			(LispFunc)lispOsTimeZone	},
+	{	"%OS-FILE-TIMES",			(LispFunc)lispOsFileTimes	},
+	{	"%OS-SET-FILE-TIMES",		(LispFunc)lispOsSetFileTimes	},
+	{	"%OS-FILE-ATTRIBUTES",		(LispFunc)lispOsFileAttributes	},
+	{	"%OS-SET-FILE-ATTRIBUTES",	(LispFunc)lispOsSetFileAttributes	},
+	{	"%OS-SLEEP",				(LispFunc)lispOsSleep	},
+	{	"%OS-CAN-READ",			(LispFunc)lispOsCanRead	},
+	{	"%OS-HEAP-ALLOCATE",		(LispFunc)lispOsHeapAllocate	},
+	{	"%OS-HEAP-FREE",			(LispFunc)lispOsHeapFree	},
+	{	"%OS-EXIT-PROCESS",		(LispFunc)lispOsExitProcess	},
+	{	"%OS-LAST-ERROR",			(LispFunc)lispOsLastError	},
 	{	"%HARDWARE-GC",				Hardware_GC				},  // turn on or off hardware-assisted gc
 
     // these are just here for Lisp reporting purposes (so the names in stack dumps are known)

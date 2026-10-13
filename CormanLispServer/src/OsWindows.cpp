@@ -167,13 +167,13 @@ void osSleep(unsigned long milliseconds)
 	Sleep(milliseconds);
 }
 
-OsFile osOpenFile(const char* path, bool forWriting)
+OsFile osOpenFile(const char* path, int access, int mode)
 {
 	return CreateFile(path,
-		forWriting ? GENERIC_WRITE : GENERIC_READ,
+		((access & OsReadAccess) ? GENERIC_READ : 0) | ((access & OsWriteAccess) ? GENERIC_WRITE : 0),
 		FILE_SHARE_READ,
 		NULL,
-		forWriting ? CREATE_ALWAYS : OPEN_EXISTING,
+		mode == OsCreateAlways ? CREATE_ALWAYS : mode == OsOpenAlways ? OPEN_ALWAYS : OPEN_EXISTING,
 		FILE_ATTRIBUTE_NORMAL,
 		NULL);
 }
@@ -191,6 +191,118 @@ bool osReadFile(OsFile file, void* buffer, unsigned long size, unsigned long* si
 bool osWriteFile(OsFile file, const void* buffer, unsigned long size, unsigned long* sizeWritten)
 {
 	return WriteFile(file, buffer, size, sizeWritten, NULL) != 0;
+}
+
+unsigned long osFileSize(OsFile file)
+{
+	return GetFileSize(file, NULL);
+}
+
+long osSeekFile(OsFile file, long offset, bool fromEnd)
+{
+	return (long)SetFilePointer(file, offset, NULL, fromEnd ? FILE_END : FILE_BEGIN);
+}
+
+bool osDeleteFile(const char* path)
+{
+	return DeleteFile(path) != 0;
+}
+
+static unsigned __int64 fromFileTime(const FILETIME* time)
+{
+	return ((unsigned __int64)time->dwHighDateTime << 32) | time->dwLowDateTime;
+}
+
+static void toFileTime(unsigned __int64 from, FILETIME* time)
+{
+	time->dwLowDateTime = (DWORD)from;
+	time->dwHighDateTime = (DWORD)(from >> 32);
+}
+
+bool osFileTimes(OsFile file, unsigned __int64* created,
+	unsigned __int64* accessed, unsigned __int64* written)
+{
+	FILETIME c, a, w;
+	if (!GetFileTime(file, &c, &a, &w))
+		return false;
+	*created = fromFileTime(&c);
+	*accessed = fromFileTime(&a);
+	*written = fromFileTime(&w);
+	return true;
+}
+
+bool osSetFileTimes(OsFile file, const unsigned __int64* created,
+	const unsigned __int64* accessed, const unsigned __int64* written)
+{
+	FILETIME c, a, w;
+	toFileTime(*created, &c);
+	toFileTime(*accessed, &a);
+	toFileTime(*written, &w);
+	return SetFileTime(file, &c, &a, &w) != 0;
+}
+
+unsigned long osFileAttributes(const char* path)
+{
+	return GetFileAttributesA(path);
+}
+
+bool osSetFileAttributes(const char* path, unsigned long attributes)
+{
+	return SetFileAttributesA(path, attributes) != 0;
+}
+
+unsigned long osFullPath(const char* path, char* fullPath, unsigned long size)
+{
+	DWORD length = GetFullPathNameA(path, size, fullPath, NULL);
+	return length < size ? length : 0;
+}
+
+bool osCurrentDirectory(char* path, unsigned long size)
+{
+	DWORD length = GetCurrentDirectoryA(size, path);
+	return length > 0 && length < size;
+}
+
+bool osCreateDirectory(const char* path)
+{
+	return CreateDirectoryA(path, NULL) != 0;
+}
+
+bool osMoveFile(const char* from, const char* to)
+{
+	return MoveFileA(from, to) != 0;
+}
+
+static void fromFindData(const WIN32_FIND_DATAA* from, OsFoundFile* found)
+{
+	found->isDirectory = (from->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ? 1 : 0;
+	found->size = from->nFileSizeLow;
+	strcpy_s(found->name, sizeof(found->name), from->cFileName);
+}
+
+OsFileSearch osFindFirstFile(const char* pattern, OsFoundFile* found)
+{
+	WIN32_FIND_DATAA data;
+	HANDLE search = FindFirstFileA(pattern, &data);
+	if (search == INVALID_HANDLE_VALUE)
+		return 0;
+	fromFindData(&data, found);
+	return search;
+}
+
+bool osFindNextFile(OsFileSearch search, OsFoundFile* found)
+{
+	WIN32_FIND_DATAA data;
+	if (!FindNextFileA(search, &data))
+		return false;
+	fromFindData(&data, found);
+	return true;
+}
+
+void osFindClose(OsFileSearch search)
+{
+	if (search)
+		FindClose(search);
 }
 
 void* osLoadLibrary(const char* path)
@@ -221,6 +333,11 @@ unsigned long osProcessId()
 void* osProcessHandle()
 {
 	return GetCurrentProcess();
+}
+
+void osExitProcess(unsigned code)
+{
+	ExitProcess(code);
 }
 
 unsigned long osModulePath(void* module, char* path, unsigned long size)

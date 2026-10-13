@@ -103,10 +103,10 @@
 		  ((int-char n))))
 
 (defun is-bad-byte-ptr (addr)
-	(win:IsBadReadPtr (ct:int-to-foreign-ptr addr) 1))
+	(not (cl::os-can-read (ct:int-to-foreign-ptr addr) 1)))
 
 (defun is-bad-dword-ptr (addr)
-	(win:IsBadReadPtr (ct:int-to-foreign-ptr addr) 4))
+	(not (cl::os-can-read (ct:int-to-foreign-ptr addr) 4)))
 					
 (defun dump-n-bytes (addr num stream &optional (added 0))
 	(let ((char-dump-indent (+ 12 (* num 3))))

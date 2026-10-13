@@ -19,64 +19,6 @@
 ;; requires win32.lisp to be loaded first
 (in-package :win32)
 
-(ct:defctype time_t :long)
-(ct:defctype _fsize_t :unsigned-long)
-
-(defwinstruct _finddata_t
-	((attrib :unsigned-long)
-	 (time_create time_t)
-	 (time_access time_t)
-	 (time_write time_t)
-	 (size _fsize_t)
-	 (name (:char 260))
-	))
-
-(ct:defun-dll _findfirst ((filespec (:char *))(fileinfo (_finddata_t *)))
-   :return-type :long
-   :library-name "msvcrt.dll"
-   :entry-name "_findfirst"
-   :linkage-type :c)
-
-(ct:defun-dll _findnext ((handle :long)(fileinfo (_finddata_t *)))
-   :return-type :long
-   :library-name "msvcrt.dll"
-   :entry-name "_findnext"
-   :linkage-type :c)
-
-(ct:defun-dll _findclose ((handle :long))
-   :return-type :long
-   :library-name "msvcrt.dll"
-   :entry-name "_findclose"
-   :linkage-type :c)
-
-;; int _chdir( const char *dirname );
-(ct:defun-dll _chdir ((dirname (:char *)))
-   :return-type :long
-   :library-name "msvcrt.dll"
-   :entry-name "_chdir"
-   :linkage-type :c)
-
-;; char *_getcwd( char *buffer, int maxlen );
-(ct:defun-dll _getcwd ((buffer (:unsigned-char *)) (maxlen :long))
-   :return-type (:unsigned-char *)
-   :library-name "msvcrt.dll"
-   :entry-name "_getcwd"
-   :linkage-type :c)
-
-;; BOOL CreateDirectory(LPCTSTR lpPathName, LPSECURITY_ATTRIBUTES lpSecurityAttributes);
-(ct:defun-dll CreateDirectory ((lpPathName LPCTSTR) (lpSecurityAttributes LPSECURITY_ATTRIBUTES))
-   :return-type BOOL
-   :library-name "kernel32.dll"
-   :entry-name "CreateDirectoryA"
-   :linkage-type :pascal)
-
-(defconstant _A_NORMAL #x00)
-(defconstant _A_RDONLY #x01)
-(defconstant _A_HIDDEN #x02)
-(defconstant _A_SYSTEM #x04)
-(defconstant _A_SUBDIR #x10)
-(defconstant _A_ARCH   #x20)
-
 (defun subdirectory-pathname 
     (directory-pathname subdir-name &key (name nil) (type nil) (version nil))
   (let ((p1 (parse-namestring subdir-name)))
@@ -113,7 +55,7 @@
     
 (defun cl::directory-internal (pathspec files? subdirs? recurse?)
 
-  (let* ((fileinfo (ct:malloc (sizeof '_finddata_t)))
+  (let* ((fileinfo (ct:malloc (sizeof 'cl::os-found-file)))
 	 (file-list nil)
 	 (subdir-list nil)
 	 (subdir-name-list nil)
@@ -122,13 +64,12 @@
 	 (extension-part (pathname-type pathname)))
 
     (when files?
-      (do ((handle (_findfirst (namestring pathname) fileinfo))
-	   (result 0 (_findnext handle fileinfo)))
-	  ((or (= result -1) (= handle -1))(_findclose handle))
+      (do* ((handle (cl::os-find-first-file (namestring pathname) fileinfo))
+	    (found (/= handle 0) (cl::os-find-next-file handle fileinfo)))
+	  ((not found)(cl::os-find-close handle))
 	(let ((name 
-	       (ct:c-string-to-lisp-string (cref _finddata_t fileinfo name))))
-	  (when (/= (logand (cref _finddata_t fileinfo attrib) 
-			    _A_SUBDIR) _A_SUBDIR)  ;; if not a subdirectory
+	       (ct:c-string-to-lisp-string (cref cl::os-found-file fileinfo cl::name))))
+	  (when (= (cref cl::os-found-file fileinfo cl::is-directory) 0)  ;; if not a subdirectory
 	    (push (file-pathname pathname name) file-list)
 	    ))))
 	    
@@ -141,13 +82,12 @@
 		      :directory (pathname-directory pathname)
 		      :name "*"
 		      :type "*")))
-	(do ((handle (_findfirst (namestring dirpath) fileinfo))
-	     (result 0 (_findnext handle fileinfo)))
-	    ((or (= result -1) (= handle -1))(_findclose handle))
+	(do* ((handle (cl::os-find-first-file (namestring dirpath) fileinfo))
+	      (found (/= handle 0) (cl::os-find-next-file handle fileinfo)))
+	    ((not found)(cl::os-find-close handle))
 	  (let ((name (ct:c-string-to-lisp-string 
-		       (cref _finddata_t fileinfo name))))
-	    (when (= (logand (cref _finddata_t fileinfo attrib) 
-			     _A_SUBDIR) _A_SUBDIR)  
+		       (cref cl::os-found-file fileinfo cl::name))))
+	    (when (/= (cref cl::os-found-file fileinfo cl::is-directory) 0)
 	      (unless (or (string= name ".") (string= name ".."))
 		(push (subdirectory-pathname dirpath name) subdir-list)
 		(push name subdir-name-list)
@@ -202,22 +142,22 @@
 		
 (defun ccl::get-current-directory ()
 	(let* ((buf (ct:malloc 256))
-		   (ret (_getcwd buf 256)))
-		(if (zerop (cl::foreign-ptr-to-int ret))
+		   (ret (cl::os-current-directory buf 256)))
+		(if (not ret)
 			(error "Could not get current directory")
-			(let* ((str (ct:c-string-to-lisp-string ret))
+			(let* ((str (ct:c-string-to-lisp-string buf))
 				   (last-char (char str (- (length str) 1))))
 				;; make sure the directory ends with a slash
 				(unless (or (char= last-char #\\) (char= last-char #\/))
-					(setf str (concatenate 'string str "\\")))
+					(setf str (concatenate 'string str cl::os-directory-separator)))
 				(values (parse-namestring str))))))
 
 ;;;
 ;;; Modified by Edi Weitz to set the *default-pathname-defaults* to the new directory
 ;;;
 (defun ccl::set-current-directory (dir) 
-  (let ((ret (_chdir (namestring dir))))
-    (if (= ret -1)
+  (let ((ret (cl::os-set-current-directory (namestring dir))))
+    (if (not ret)
       (error "Could not set current directory to ~A" dir)
       (setq *default-pathname-defaults*
               (pl::get-current-directory)))))		
@@ -239,7 +179,7 @@
 			(setf path 
 				(make-pathname :device (pathname-device path)
 							   :directory dir))
-			(when (CreateDirectory (ct:lisp-string-to-c-string (namestring path)) ct:null)
+			(when (cl::os-create-directory (ct:lisp-string-to-c-string (namestring path)))
 				(setf created t)
 				(if verbose 
 					(format t "~&Created directory ~A~%" (namestring path)))))
@@ -249,11 +189,8 @@
 ;;; JP Massar.  10/9/01.
 ;;; Put in  VERBOSE keyword.
 
-(ct:defun-dll MoveFile ((old LPCTSTR) (new LPCTSTR))
-   :return-type BOOL
-   :library-name "kernel32.dll"
-   :entry-name "MoveFileA"
-   :linkage-type :pascal)
+(defun MoveFile (old new)
+  (cl::os-move-file old new))
 
 ;;;
 ;;;	Common Lisp RENAME-FILE function
