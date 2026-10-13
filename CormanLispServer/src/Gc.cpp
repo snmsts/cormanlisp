@@ -31,6 +31,13 @@
 #include "stdafx.h"
 #include "ExceptionFrame.h"
 
+// windows.h does not define these for every compiler
+#ifndef min
+#define min(a, b) (((a) < (b)) ? (a) : (b))
+#endif
+#ifndef max
+#define max(a, b) (((a) > (b)) ? (a) : (b))
+#endif
 #include <wtypes.h>
 #include <memory.h>
 #include <windows.h>
