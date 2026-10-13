@@ -430,6 +430,11 @@ void processStack(StackCell* stack, DWORD stackLength, ThreadRecord* th)
 
     while (basePointer < start)
     {
+        // The chain of frames is followed on trust, and not every frame
+        // on the stack keeps to it. Give up when it leaves the stack.
+        if ((LispObj*)basePointer < end || (unsigned long*)basePointer[0] <= basePointer)
+            return;
+
         retAddr = basePointer[1];
         ebp = basePointer[0];
         stack[basePointer - end].ebp = ebp;
