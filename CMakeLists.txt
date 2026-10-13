@@ -9,9 +9,11 @@ endif()
 
 project(CormanLisp LANGUAGES C CXX RC)
 
-# The kernel is 32-bit x86 code with MSVC inline assembly and SEH.
-if(NOT MSVC)
-  message(FATAL_ERROR "Corman Lisp needs an MSVC-compatible compiler.")
+# The kernel is 32-bit x86 code for Windows with inline assembly in the
+# Microsoft syntax: the Microsoft compiler, or clang (as clang-cl with the
+# Microsoft libraries, or as clang with those of mingw-w64).
+if(NOT WIN32 OR NOT (MSVC OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))
+  message(FATAL_ERROR "Corman Lisp needs the Microsoft compiler or clang, targeting Windows.")
 endif()
 if(NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
   message(FATAL_ERROR
@@ -42,24 +44,49 @@ set(CORMANLISP_RUNTIME_DIR "${CMAKE_SOURCE_DIR}")
 # compiled without optimization. Most of the kernel is replaced by compiled
 # Lisp code while the image is built, so this costs little.
 #
-set(CMAKE_C_FLAGS "")
-set(CMAKE_CXX_FLAGS "/EHsc")
-set(CMAKE_C_FLAGS_STANDARD "/Od /Oy- /Zi")
-set(CMAKE_CXX_FLAGS_STANDARD "/Od /Oy- /Zi")
-set(CMAKE_EXE_LINKER_FLAGS_STANDARD "/DEBUG /INCREMENTAL:NO")
-set(CMAKE_SHARED_LINKER_FLAGS_STANDARD "/DEBUG /INCREMENTAL:NO")
-set(CMAKE_MODULE_LINKER_FLAGS_STANDARD "/DEBUG /INCREMENTAL:NO")
-set(CMAKE_STATIC_LINKER_FLAGS_STANDARD "")
-set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreadedDLL)
+if(MSVC)
+  set(CMAKE_C_FLAGS "")
+  set(CMAKE_CXX_FLAGS "/EHsc")
+  set(CMAKE_C_FLAGS_STANDARD "/Od /Oy- /Zi")
+  set(CMAKE_CXX_FLAGS_STANDARD "/Od /Oy- /Zi")
+  set(CMAKE_EXE_LINKER_FLAGS_STANDARD "/DEBUG /INCREMENTAL:NO")
+  set(CMAKE_SHARED_LINKER_FLAGS_STANDARD "/DEBUG /INCREMENTAL:NO")
+  set(CMAKE_MODULE_LINKER_FLAGS_STANDARD "/DEBUG /INCREMENTAL:NO")
+  set(CMAKE_STATIC_LINKER_FLAGS_STANDARD "")
+  set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreadedDLL)
 
-add_compile_options(/W3 /GS- /arch:IA32 /fp:precise)
+  add_compile_options(/W3 /GS- /arch:IA32 /fp:precise)
+  # Lisp code is generated into the heap and run from there: no DEP.
+  add_link_options(/NXCOMPAT:NO /DYNAMICBASE)
+  # Options of the front ends only.
+  set(_frontend_options /Ob1 /GF /Gy)
+  set(_o2 /O2 /wd4996)
+else()
+  set(CMAKE_C_FLAGS "")
+  set(CMAKE_CXX_FLAGS "")
+  set(CMAKE_C_FLAGS_STANDARD "-O0 -g -fno-omit-frame-pointer")
+  set(CMAKE_CXX_FLAGS_STANDARD "-O0 -g -fno-omit-frame-pointer")
+  set(CMAKE_EXE_LINKER_FLAGS_STANDARD "")
+  set(CMAKE_SHARED_LINKER_FLAGS_STANDARD "")
+  set(CMAKE_MODULE_LINKER_FLAGS_STANDARD "")
+  set(CMAKE_STATIC_LINKER_FLAGS_STANDARD "")
+  # CormanLispServer.rc is not ASCII.
+  set(CMAKE_RC_FLAGS "-c 1252")
+
+  # -fms-extensions for the inline assembly; no SSE, as with /arch:IA32.
+  add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:-fms-extensions;-march=i686;-mno-sse;-Wall>")
+  # No DEP, see above, and no DLLs of the compiler's runtime to carry along.
+  add_link_options(-static -Wl,--disable-nxcompat -Wl,--dynamicbase)
+  set(_frontend_options "")
+  set(_o2 -O2)
+  # CormanLispServer.dll and dlltemplate.dll are looked for by these names.
+  set(CMAKE_SHARED_LIBRARY_PREFIX "")
+endif()
 add_compile_definitions(WIN32 NDEBUG)
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
   # Old habits of the sources which clang reports at every use.
   add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:-Wno-writable-strings;-Wno-missing-braces;-Wno-microsoft-exception-spec;-Wno-nonportable-include-path>")
 endif()
-# Lisp code is generated into the heap and run from there: no DEP.
-add_link_options(/NXCOMPAT:NO /DYNAMICBASE)
 
 function(cormanlisp_runtime_target target)
   set_target_properties(${target} PROPERTIES
@@ -69,9 +96,17 @@ endfunction()
 # Embeds <target dir>/<target>.exe.manifest. It carries its own trustInfo, so
 # the linker is told not to generate one.
 function(cormanlisp_embed_manifest target)
-  target_sources(${target} PRIVATE
-    "${CMAKE_SOURCE_DIR}/${target}/${target}.exe.manifest")
-  target_link_options(${target} PRIVATE /MANIFEST /MANIFESTUAC:NO)
+  set(_manifest "${CMAKE_SOURCE_DIR}/${target}/${target}.exe.manifest")
+  if(MSVC)
+    target_sources(${target} PRIVATE "${_manifest}")
+    target_link_options(${target} PRIVATE /MANIFEST /MANIFESTUAC:NO)
+  else()
+    # No linker support there: the manifest goes in as a resource.
+    set(_rc "${CMAKE_CURRENT_BINARY_DIR}/${target}-manifest.rc")
+    file(WRITE "${_rc}" "1 24 \"${_manifest}\"\n")
+    target_sources(${target} PRIVATE "${_rc}")
+    set_property(SOURCE "${_rc}" APPEND PROPERTY OBJECT_DEPENDS "${_manifest}")
+  endif()
 endfunction()
 
 #
@@ -111,7 +146,7 @@ else()
   target_include_directories(cormanlisp_zlib PUBLIC "${_zlib}")
   target_compile_definitions(cormanlisp_zlib PRIVATE _CRT_SECURE_NO_DEPRECATE _CRT_NONSTDC_NO_DEPRECATE)
   # zlib has no part in the garbage collector's assumptions.
-  target_compile_options(cormanlisp_zlib PRIVATE /O2 /wd4996)
+  target_compile_options(cormanlisp_zlib PRIVATE ${_o2})
 endif()
 
 #
@@ -155,7 +190,7 @@ target_include_directories(cormanlisp_kernel PUBLIC
 target_compile_definitions(cormanlisp_kernel PRIVATE _WINDOWS _WINDLL _CormanLispServer)
 target_link_libraries(cormanlisp_kernel PUBLIC cormanlisp_zlib)
 
-set(_kernel_libs cormanlisp_zlib ws2_32 odbc32 odbccp32 userenv)
+set(_kernel_libs cormanlisp_zlib ws2_32 odbc32 odbccp32 userenv ole32 oleaut32 uuid)
 
 add_library(CormanLispServer SHARED
   $<TARGET_OBJECTS:cormanlisp_kernel>
@@ -163,14 +198,21 @@ add_library(CormanLispServer SHARED
   "${_server}/CormanLispServer.def")
 target_include_directories(CormanLispServer PRIVATE "${_server}/res")
 target_link_libraries(CormanLispServer PRIVATE ${_kernel_libs})
-target_link_options(CormanLispServer PRIVATE /SAFESEH:NO /SUBSYSTEM:WINDOWS /MANIFEST:NO)
+if(MSVC)
+  target_link_options(CormanLispServer PRIVATE /SAFESEH:NO /SUBSYSTEM:WINDOWS /MANIFEST:NO)
+else()
+  # The names in the .def file are those of stdcall functions.
+  target_link_options(CormanLispServer PRIVATE -Wl,--enable-stdcall-fixup)
+endif()
 cormanlisp_runtime_target(CormanLispServer)
 
 add_library(CormanLispStatic STATIC $<TARGET_OBJECTS:cormanlisp_kernel>)
 target_link_libraries(CormanLispStatic INTERFACE ${_kernel_libs})
 # The kernel registers exception handlers of its own, which the table of
 # safe handlers would not know about.
-target_link_options(CormanLispStatic INTERFACE /SAFESEH:NO)
+if(MSVC)
+  target_link_options(CormanLispStatic INTERFACE /SAFESEH:NO)
+endif()
 
 #
 # Front ends which load CormanLispServer.dll.
@@ -178,8 +220,8 @@ target_link_options(CormanLispStatic INTERFACE /SAFESEH:NO)
 add_executable(clconsole clconsole/clconsole.cpp clconsole/clconsole.rc)
 target_include_directories(clconsole PRIVATE "${CMAKE_SOURCE_DIR}/include")
 target_compile_definitions(clconsole PRIVATE _CONSOLE _MBCS)
-target_compile_options(clconsole PRIVATE /Ob1 /GF /Gy)
-target_link_libraries(clconsole PRIVATE odbc32 odbccp32)
+target_compile_options(clconsole PRIVATE ${_frontend_options})
+target_link_libraries(clconsole PRIVATE odbc32 odbccp32 ole32 oleaut32 uuid)
 cormanlisp_runtime_target(clconsole)
 cormanlisp_embed_manifest(clconsole)
 # clconsole loads the kernel at run time.
@@ -188,8 +230,8 @@ add_dependencies(clconsole CormanLispServer)
 add_executable(clboot WIN32 clboot/clboot.cpp clboot/clboot.rc)
 target_include_directories(clboot PRIVATE "${CMAKE_SOURCE_DIR}/include")
 target_compile_definitions(clboot PRIVATE _WINDOWS)
-target_compile_options(clboot PRIVATE /Ob1 /GF /Gy)
-target_link_libraries(clboot PRIVATE odbc32 odbccp32)
+target_compile_options(clboot PRIVATE ${_frontend_options})
+target_link_libraries(clboot PRIVATE odbc32 odbccp32 ole32 oleaut32 uuid)
 cormanlisp_runtime_target(clboot)
 cormanlisp_embed_manifest(clboot)
 
@@ -199,7 +241,7 @@ cormanlisp_embed_manifest(clboot)
 add_executable(clconsoleapp clconsoleapp/clconsoleapp.cpp clconsoleapp/clconsoleapp.rc)
 target_include_directories(clconsoleapp PRIVATE "${CMAKE_SOURCE_DIR}/include")
 target_compile_definitions(clconsoleapp PRIVATE _CONSOLE _MBCS)
-target_compile_options(clconsoleapp PRIVATE /Ob1 /GF /Gy)
+target_compile_options(clconsoleapp PRIVATE ${_frontend_options})
 target_link_libraries(clconsoleapp PRIVATE CormanLispStatic)
 cormanlisp_runtime_target(clconsoleapp)
 cormanlisp_embed_manifest(clconsoleapp)
@@ -207,17 +249,21 @@ cormanlisp_embed_manifest(clconsoleapp)
 add_executable(clbootapp WIN32 clbootapp/clbootapp.cpp clbootapp/clbootapp.rc)
 target_include_directories(clbootapp PRIVATE "${CMAKE_SOURCE_DIR}/include")
 target_compile_definitions(clbootapp PRIVATE _WINDOWS _MBCS)
-target_compile_options(clbootapp PRIVATE /Ob1 /GF /Gy)
+target_compile_options(clbootapp PRIVATE ${_frontend_options})
 target_link_libraries(clbootapp PRIVATE CormanLispStatic)
 cormanlisp_runtime_target(clbootapp)
 cormanlisp_embed_manifest(clbootapp)
 
 add_library(dlltemplate SHARED dlltemplate/dlltemplate.cpp dlltemplate/dlltemplate.def)
-target_compile_options(dlltemplate PRIVATE /Ob1 /GF /Gy)
+target_compile_options(dlltemplate PRIVATE ${_frontend_options})
 # DllMain is the entry point, so the CRT startup code which would pull in
 # the rest of the C runtime is not linked.
-target_link_libraries(dlltemplate PRIVATE vcruntime ucrt)
-target_link_options(dlltemplate PRIVATE /ENTRY:DllMain /SUBSYSTEM:WINDOWS /MANIFEST:NO)
+if(MSVC)
+  target_link_libraries(dlltemplate PRIVATE vcruntime ucrt)
+  target_link_options(dlltemplate PRIVATE /ENTRY:DllMain /SUBSYSTEM:WINDOWS /MANIFEST:NO)
+else()
+  target_link_options(dlltemplate PRIVATE -nostartfiles -Wl,--entry,_DllMain@12)
+endif()
 cormanlisp_runtime_target(dlltemplate)
 
 #

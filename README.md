@@ -57,7 +57,18 @@ Microsoft tools:
       -DCMAKE_CXX_COMPILER_TARGET=i686-pc-windows-msvc
     cmake --build build
 
-The IDE is not built this way yet.
+The Microsoft compiler and libraries are not needed at all with the clang
+of the mingw-w64 toolchain for 32-bit x86, for instance in the MINGW32
+environment of MSYS2:
+
+    cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Standard \
+      -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+    cmake --build build
+
+gcc cannot be used: the kernel contains inline assembly in the Microsoft
+syntax.
+
+The IDE is not built with clang yet.
 
 The installer is not part of the CMake build yet.
 
