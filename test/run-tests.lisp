@@ -34,6 +34,14 @@
 	(check "REMHASH, NIL in an empty table"
 		(and (not (remhash nil h)) (= (hash-table-count h) 0))))
 
+;;; A float which a foreign function returns, or which an arithmetic
+;;; function has just computed, used to get lost when the node for it
+;;; was allocated during a garbage collection.
+(check "floats returned by foreign functions"
+	(dotimes (i 100000 t) (unless (eql (read-from-string "1.2") 1.2) (return nil))))
+(check "floats computed during a garbage collection"
+	(let ((x 1.5d0)) (dotimes (i 600000 t) (unless (= (+ x 1d0) 2.5d0) (return nil)))))
+
 (load "test/testkit.lisp")
 (load "test/test-sequences.lisp")
 (check "sequences" (zerop (test-sequences-module)))
