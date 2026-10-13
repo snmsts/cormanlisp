@@ -1332,6 +1332,11 @@ void garbageCollect(long level)
     HWND wnd = 0;
     BOOL criticalSectionEntered = 0;
     int threadsSuspended = 0;
+    unsigned char fpuState[108];
+
+    // Lisp code keeps a floating point result on the FPU stack while it
+    // allocates the node for it, so the FPU state has to survive a collection.
+    __asm fnsave fpuState
 
     GCCriticalSection.Enter();
     
@@ -1581,6 +1586,7 @@ void garbageCollect(long level)
             ThreadList.resumeAllOtherThreads();
          }
     }
+    __asm frstor fpuState
 }
 
 //
