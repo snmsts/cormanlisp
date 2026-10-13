@@ -30,7 +30,7 @@ OSVERSIONINFO gOsVersionInfo;
 TCHAR g_szFileName[MAX_PATH];
 char CormanLispServerDirectory[MAX_PATH+1];
 
-CharBuf TerminalInputBuf(0x8000);
+TerminalInput TerminalInputBuf(0x8000);
 
 static void RunLispThread(HANDLE* thread);
 
@@ -103,7 +103,7 @@ extern "C" long Initialize(const wchar_t* imageName, int clientType, HINSTANCE a
         initFlag++;
 	    const wchar_t* ch = 0;
 	    int i = 0;
-	    InitializationEvent.ResetEvent();
+	    InitializationEvent.Reset();
 
 	    if (!DLL_Loaded)	
 		    processAttach(appInstance);
@@ -324,7 +324,7 @@ SecondaryThreadProc(LPVOID func)
 	osSetThreadSlotValue(Thread_Index, thisThread);
 	osSetThreadSlotValue(QV_Index, thisThread->QV_rec);
 	osThreadSlotValue(QV_Index);	// force NT to allocate the block
-	thisThread->event.SetEvent();
+	thisThread->event.Set();
 
 	pushDynamicBinding(COMPILER_RUNTIME, NIL);
 
@@ -377,8 +377,8 @@ RunSecondaryThread(LispObj func)
     }
 
     osResumeThread(th->thread);
-    WaitForSingleObject(th->event.m_hObject, INFINITE); // timeout after 5 seconds
-    th->event.ResetEvent();
+    th->event.Wait();
+    th->event.Reset();
 
 	GCCriticalSection.Leave();	// don't enable GC until the thread
 	return createUnsignedLispInteger(th->threadID);
@@ -399,8 +399,7 @@ RunSecondaryThread(LispObj func)
 extern "C" __declspec(dllexport) void BlessThread()
 {
 	// If Lisp is initializing, wait for initialization to finish.
-	// It will timeout after 10 seconds.
-	WaitForSingleObject(InitializationEvent, INFINITE);
+	InitializationEvent.Wait();
 
 	GCCriticalSection.Enter();	// make sure garbage collection is not running
 //    __try
@@ -499,8 +498,7 @@ void* GetCallbackFunctionPointer(wchar_t* functionName, wchar_t* package)
 	LispObj ret = 0;
 
 	// If Lisp is initializing, wait for initialization to finish.
-	// It will timeout after 10 seconds.
-	WaitForSingleObject(InitializationEvent, INFINITE);
+	InitializationEvent.Wait();
 
 	// need to wrap this so page faults get handled during memory
 	// allocation

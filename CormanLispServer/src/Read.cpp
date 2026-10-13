@@ -1019,9 +1019,7 @@ LispObj consoleUnderflow(LispObj s)
 	flushStream(symbolValue(CONSOLE_OUTPUT_STREAM));
 
 	while (TerminalInputBuf.numchars() == 0) // loop until some input
-	{
-		PLSingleLock myLock(TerminalInputBuf.charsAvailable(), TRUE);
-	}
+		TerminalInputBuf.waitForChars();
 	num = TerminalInputBuf.getCharsInBuffer(InputUnderflowBuffer,
 				 integer(streamInputBufferLength(s)));
 
@@ -1041,22 +1039,10 @@ LispObj consoleUnderflow(LispObj s)
 LispFunction(Console_Chars_Available)
 {
 	LISP_FUNC_BEGIN(0);
-	PLEvent* event = 0;
-	BOOL result = 0;
 	ret = NIL;
-	event = TerminalInputBuf.charsAvailable();
-	result = event->Lock(10);		// timeout of 10 ms
-	if (result == TRUE)
-	{
-		if (TerminalInputBuf.numchars() > 0)
-			ret = T;
-		event->Unlock();
-	}
-	else
-	{
-		if (TerminalInputBuf.numchars() > 0)
-			ret = T;
-	}
+	TerminalInputBuf.waitForChars(10);		// timeout of 10 ms
+	if (TerminalInputBuf.numchars() > 0)
+		ret = T;
 	LISP_FUNC_RETURN(ret);
 }
 

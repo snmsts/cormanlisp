@@ -15,10 +15,8 @@
 #define CORMANLISPSERVER_H
 
 #include "CormanLispHost.h"
-#include "CharBuf.h"
+#include "TerminalInput.h"
 #include "UserInfo.h"
-
-class CharBuf;
 
 void InitializeCormanLisp(const CormanLispHost* host, const UserInfo *user_info);
 void RunCormanLisp(HANDLE* thread);
@@ -34,7 +32,7 @@ EXCEPTION_DISPOSITION __cdecl Heap_Fault_Handler(struct _EXCEPTION_RECORD* Excep
     void* EstablisherFrame, struct _CONTEXT* ContextRecord, void* DispatcherContext);
 long getHeapStatistics(long generation, long* allocated, long* used);
 
-extern CharBuf						TerminalInputBuf;
+extern TerminalInput				TerminalInputBuf;
 extern const int					LispImageNameMax;
 extern char							LispImageName[];
 extern int							CormanLispClientType;

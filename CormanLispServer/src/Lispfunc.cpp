@@ -447,7 +447,7 @@ LispFunction(LoadLispImage)
 	path = 0;
 	_args = 0;
 	LISP_ARG(0) = 0;
-	InitializationEvent.SetEvent();		// done initializing				
+	InitializationEvent.Set();		// done initializing				
 	if (isFunction(func))
 	{
 		LispCall1(Funcall, symbolValue(TOP_LEVEL));

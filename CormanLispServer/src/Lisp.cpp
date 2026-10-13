@@ -63,7 +63,7 @@ static LispObj createConsoleStream();
 
 LispThreadQueue ThreadList;
 extern CriticalSection TQCriticalSection;
-PLEvent InitializationEvent(FALSE, TRUE, 0 /*"CormanLispInitialization" */);
+Event InitializationEvent(false);
 
 LispObj* 
 createNewQV()
@@ -1084,7 +1084,7 @@ void LispLoop()
 					if (LispCall1(Probe_File, stringNode(LispImageName)) == NIL)
 					{
 						strcat_s(missingImgMessage, sizeof(missingImgMessage), LispImageName);
-						InitializationEvent.SetEvent();		// done initializing				
+						InitializationEvent.Set();		// done initializing				
 						Error(missingImgMessage);
 					}
 					LispCall1(LoadLispImage, stringNode(LispImageName));
@@ -1133,7 +1133,7 @@ void LispLoop()
 			if (initializing)
 			{
 				initializing = 0;
-				InitializationEvent.SetEvent();		// done initializing
+				InitializationEvent.Set();		// done initializing
 			}
 				
 			LispCall2(Write, x, symbolValue(STANDARD_OUTPUT));	// just echo for now

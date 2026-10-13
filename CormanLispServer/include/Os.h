@@ -69,6 +69,25 @@ extern void __stdcall osEnterLock(OsLock* lock);
 extern void __stdcall osLeaveLock(OsLock* lock);
 
 //
+//	Events
+//
+//	An event is set or it is not, and a thread can wait until it is. One
+//	which resets itself is no longer set once a wait for it has returned,
+//	so that each osSetEvent() lets one waiting thread go on.
+//
+typedef void* OsEvent;
+const unsigned long OsForever = 0xffffffff;
+
+//	The new event is not set.
+extern OsEvent osCreateEvent(bool resetsItself);
+extern void osCloseEvent(OsEvent event);
+extern void osSetEvent(OsEvent event);
+extern void osResetEvent(OsEvent event);
+
+//	Returns false if the event was still not set after that long.
+extern bool osWaitEvent(OsEvent event, unsigned long milliseconds);
+
+//
 //	Threads
 //
 typedef void* OsThread;

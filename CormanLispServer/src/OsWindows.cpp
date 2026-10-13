@@ -88,6 +88,32 @@ void __stdcall osLeaveLock(OsLock* lock)
 	LeaveCriticalSection(lock);
 }
 
+OsEvent osCreateEvent(bool resetsItself)
+{
+	return CreateEvent(NULL, !resetsItself, FALSE, NULL);
+}
+
+void osCloseEvent(OsEvent event)
+{
+	if (event)
+		CloseHandle(event);
+}
+
+void osSetEvent(OsEvent event)
+{
+	SetEvent(event);
+}
+
+void osResetEvent(OsEvent event)
+{
+	ResetEvent(event);
+}
+
+bool osWaitEvent(OsEvent event, unsigned long milliseconds)
+{
+	return WaitForSingleObject(event, milliseconds) == WAIT_OBJECT_0;
+}
+
 __int64 osPerformanceCounter()
 {
 	LARGE_INTEGER count;

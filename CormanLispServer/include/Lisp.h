@@ -2049,7 +2049,7 @@ typedef unsigned int ULONG32;
 extern LispThreadQueue ThreadList;
 extern unsigned long NumLispThreads;
 extern CriticalSection GCCriticalSection;
-extern PLEvent InitializationEvent;
+extern Event InitializationEvent;
 
 extern ULONG32 SysGlobalsAddr;
 extern LispObj** GlobalQVPointer;

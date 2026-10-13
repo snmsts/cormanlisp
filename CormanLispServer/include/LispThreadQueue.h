@@ -27,7 +27,7 @@ struct ThreadRecord
 	OsThread thread;
 	DWORD  threadID;
 	unsigned long* stackStart;
-	PLEvent event;
+	Event event;
 	int started;
 	int type;					// 0 = primary lisp, 1 = secondary lisp, 2 = blessed foreign
 	LONG image_loads_count;
