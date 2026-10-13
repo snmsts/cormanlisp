@@ -1222,6 +1222,6 @@ void WriteMemoryReportTask(void* address, CONTEXT* context)
     _beginthread(WriteMemoryReport, 0, &memReportParams);
     while (!memReportParams.completed)
     {
-        Sleep(500);     // wait for .5 seconds before polling again
+        osSleep(500);     // wait for .5 seconds before polling again
     }
 }

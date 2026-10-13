@@ -20,6 +20,7 @@
 #define LISP_H
 
 #include "generic.h"
+#include "Os.h"
 
 typedef unsigned long LispObj;
 
@@ -1298,8 +1299,8 @@ const long NumSpecialSymbolEntries = 8192;
 const long QV_MAX = FirstSpecialSymbolEntry + NumSpecialSymbolEntries;
 
 extern LispObj* QV;
-extern DWORD QV_Index;
-extern DWORD Thread_Index;
+extern OsThreadSlot QV_Index;
+extern OsThreadSlot Thread_Index;
 
 #define NIL							QV[Nil_Index]
 #define T							QV[T_Index]

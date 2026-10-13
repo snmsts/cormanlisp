@@ -111,7 +111,7 @@ LispThreadQueue::suspendAllOtherThreads()
     int wait = 1;
 	TQCriticalSection.Enter();
 	ThreadRecord* tr = list;
-	ThreadRecord* currThread = (ThreadRecord*)TlsGetValue(Thread_Index);
+	ThreadRecord* currThread = (ThreadRecord*)osThreadSlotValue(Thread_Index);
 	while (tr)
 	{
 		if (tr != currThread)
@@ -120,7 +120,7 @@ LispThreadQueue::suspendAllOtherThreads()
 			ret = SuspendThread(tr->thread);
             if (ret == (DWORD)-1)
             {
-                Sleep(wait++);
+                osSleep(wait++);
                 goto retry_suspend;
             }
         }
@@ -136,7 +136,7 @@ LispThreadQueue::suspendAllOtherThreads()
 void LispThreadQueue::suspendAllOtherThreadsWithoutLocking()
 {
 	ThreadRecord* tr = list;
-	ThreadRecord* currThread = (ThreadRecord*)TlsGetValue(Thread_Index);
+	ThreadRecord* currThread = (ThreadRecord*)osThreadSlotValue(Thread_Index);
 	while (tr)
 	{
 		if (tr != currThread)
@@ -149,7 +149,7 @@ void LispThreadQueue::resumeAllOtherThreads()
 {
 	TQCriticalSection.Enter();
 	ThreadRecord* tr = list;
-	ThreadRecord* currThread = (ThreadRecord*)TlsGetValue(Thread_Index);
+	ThreadRecord* currThread = (ThreadRecord*)osThreadSlotValue(Thread_Index);
 	while (tr)
 	{
 		if (tr != currThread)
@@ -166,7 +166,7 @@ void LispThreadQueue::resumeAllOtherThreads()
 void LispThreadQueue::resumeAllOtherThreadsWithoutLocking()
 {
 	ThreadRecord* tr = list;
-	ThreadRecord* currThread = (ThreadRecord*)TlsGetValue(Thread_Index);
+	ThreadRecord* currThread = (ThreadRecord*)osThreadSlotValue(Thread_Index);
 	while (tr)
 	{
 		if (tr != currThread)
@@ -204,7 +204,7 @@ void LispThreadQueue::Unlock()
 void LispThreadQueue::delay(int ms)
 {
 	// delay ms milliseconds
-	Sleep(ms);
+	osSleep(ms);
 }
 
 #define DirectionFlagSet(flags) ((flags) & 0x400)	// check bit 10 of flags
@@ -226,7 +226,7 @@ void LispThreadQueue::ensureSafeStates()
 {
 	if (NumLispThreads > 1)
 	{
-		ThreadRecord* currThread = (ThreadRecord*)TlsGetValue(Thread_Index);
+		ThreadRecord* currThread = (ThreadRecord*)osThreadSlotValue(Thread_Index);
 		ThreadRecord* tr = getList();
 		static CONTEXT lispContext;
 		while (tr)
@@ -272,7 +272,7 @@ void LispThreadQueue::ensureSafeState(ThreadRecord* tr)
         ThreadList.Lock();
 		ResumeThread(tr->thread);
     retry_suspend:
-		Sleep(wait++);	// wait 1 or more milliseconds
+		osSleep(wait++);	// wait 1 or more milliseconds
 		ret = SuspendThread(tr->thread);	// try again
         if (ret == (DWORD)-1)
             goto retry_suspend;

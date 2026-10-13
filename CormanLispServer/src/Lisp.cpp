@@ -38,8 +38,8 @@
 
 #pragma warning (disable:4127)				// conditional expression is constant
 
-DWORD QV_Index = 0;
-DWORD Thread_Index = 0;
+OsThreadSlot QV_Index = 0;
+OsThreadSlot Thread_Index = 0;
 
 LispObj QV__[QV_MAX] = {0};
 LispObj* QV = QV__;

@@ -60,12 +60,12 @@ void processAttach(HINSTANCE hInstance)
 {
 	BOOL ret = 0;
 	char* result = 0;
-	QV_Index = TlsAlloc();
-	Thread_Index = TlsAlloc();
-	TlsSetValue(QV_Index, 0);
-	TlsSetValue(Thread_Index, 0);
-	TlsGetValue(QV_Index);
-	TlsGetValue(Thread_Index);
+	QV_Index = osAllocateThreadSlot();
+	Thread_Index = osAllocateThreadSlot();
+	osSetThreadSlotValue(QV_Index, 0);
+	osSetThreadSlotValue(Thread_Index, 0);
+	osThreadSlotValue(QV_Index);
+	osThreadSlotValue(Thread_Index);
 	GetModuleFileName(hInstance, g_szFileName, MAX_PATH);
 
 	// create a named mutex that is used to determine if the
@@ -93,19 +93,19 @@ DllMain(HINSTANCE hInstance, DWORD dwReason, LPVOID /*lpReserved*/)
 			processAttach(hInstance);
 			break;
 		case DLL_PROCESS_DETACH:
-			TlsFree(QV_Index);
-			TlsFree(Thread_Index);
+			osFreeThreadSlot(QV_Index);
+			osFreeThreadSlot(Thread_Index);
 			break;
 		case DLL_THREAD_ATTACH:
-			TlsSetValue(QV_Index, 0);
-			TlsSetValue(Thread_Index, 0);
-			TlsGetValue(QV_Index);
-			TlsGetValue(Thread_Index);
+			osSetThreadSlotValue(QV_Index, 0);
+			osSetThreadSlotValue(Thread_Index, 0);
+			osThreadSlotValue(QV_Index);
+			osThreadSlotValue(Thread_Index);
 			break;
 		case DLL_THREAD_DETACH:
 			// need to free QV, ThreadRecord
-			TlsSetValue(QV_Index, 0);
-			TlsSetValue(Thread_Index, 0);
+			osSetThreadSlotValue(QV_Index, 0);
+			osSetThreadSlotValue(Thread_Index, 0);
 			break;
 	}
 	return 1;   // ok
@@ -257,11 +257,11 @@ extern "C" long Initialize(const wchar_t* imageName, int clientType, HINSTANCE a
 	    LispImageName[i] = 0;
 
 	    // initialize lisp system
-	    TlsSetValue(QV_Index, QV);	// store global QV as the QV for this thread
-	    TlsGetValue(QV_Index);
+	    osSetThreadSlotValue(QV_Index, QV);	// store global QV as the QV for this thread
+	    osThreadSlotValue(QV_Index);
 
 	    initLisp();
-	    TlsSetValue(QV_Index, 0);
+	    osSetThreadSlotValue(QV_Index, 0);
 	    CormanLispClientType = clientType;
 	    RunLispThread(thread);		// start 'er up
     }
@@ -291,11 +291,11 @@ void InitializeCormanLisp(IUnknown* client, const UserInfo *user_info)
 	}
 
 	// initialize lisp system
-	TlsSetValue(QV_Index, QV);	// store global QV as the QV for this thread
-	TlsGetValue(QV_Index);
+	osSetThreadSlotValue(QV_Index, QV);	// store global QV as the QV for this thread
+	osThreadSlotValue(QV_Index);
 
 	initLisp();
-	TlsSetValue(QV_Index, 0);
+	osSetThreadSlotValue(QV_Index, 0);
 }
 
 void RunCormanLisp(HANDLE* thread)
@@ -356,7 +356,7 @@ ThreadQV()
 LispObj*
 ThreadQV()
 {
-	return (LispObj*)TlsGetValue(QV_Index);
+	return (LispObj*)osThreadSlotValue(QV_Index);
 }
 #endif
 
@@ -384,9 +384,9 @@ UINT LispMainProc(LPVOID /*pParam*/)
 	}
 
 	th->stackStart = (unsigned long*)dummy;
-	TlsSetValue(Thread_Index, th);
-	TlsSetValue(QV_Index, th->QV_rec);
-	TlsGetValue(QV_Index);	// force NT to allocate the block
+	osSetThreadSlotValue(Thread_Index, th);
+	osSetThreadSlotValue(QV_Index, th->QV_rec);
+	osThreadSlotValue(QV_Index);	// force NT to allocate the block
 	CoInitialize(0);
 
 	pushDynamicBinding(COMPILER_RUNTIME, NIL);
@@ -490,9 +490,9 @@ SecondaryThreadProc(LPVOID func)
 	__asm	mov  dummy, ebp
 
 	thisThread->stackStart = (unsigned long*)dummy;
-	TlsSetValue(Thread_Index, thisThread);
-	TlsSetValue(QV_Index, thisThread->QV_rec);
-	TlsGetValue(QV_Index);	// force NT to allocate the block
+	osSetThreadSlotValue(Thread_Index, thisThread);
+	osSetThreadSlotValue(QV_Index, thisThread->QV_rec);
+	osThreadSlotValue(QV_Index);	// force NT to allocate the block
 	thisThread->event.SetEvent();
 
 	pushDynamicBinding(COMPILER_RUNTIME, NIL);
@@ -581,7 +581,7 @@ extern "C" __declspec(dllexport) void BlessThread()
 	GCCriticalSection.Enter();	// make sure garbage collection is not running
 //    __try
 //    {
-	    if (TlsGetValue(QV_Index) == 0)
+	    if (osThreadSlotValue(QV_Index) == 0)
 	    {
 		    ThreadRecord* th = new ThreadRecord;
 		    LispObj fp = 0;
@@ -609,9 +609,9 @@ extern "C" __declspec(dllexport) void BlessThread()
 
 		    NumLispThreads++;
 		    ThreadList.insert(th);
-		    TlsSetValue(Thread_Index, th);
-		    TlsSetValue(QV_Index, th->QV_rec);
-		    TlsGetValue(QV_Index);	// force NT to allocate the block
+		    osSetThreadSlotValue(Thread_Index, th);
+		    osSetThreadSlotValue(QV_Index, th->QV_rec);
+		    osThreadSlotValue(QV_Index);	// force NT to allocate the block
 		    pushDynamicBinding(COMPILER_RUNTIME, NIL);
 
 		    // bind ccl:*current-thread-id*, ccl:*current-thread-handle*
@@ -648,9 +648,9 @@ extern "C" __declspec(dllexport) void BlessThread()
 extern "C" __declspec(dllexport) void UnblessThread()
 {
 	GCCriticalSection.Enter();	// make sure garbage collection is not running
-	ThreadRecord* th = (ThreadRecord*)TlsGetValue(Thread_Index);
-	TlsSetValue(Thread_Index, 0);
-	TlsSetValue(QV_Index, 0);
+	ThreadRecord* th = (ThreadRecord*)osThreadSlotValue(Thread_Index);
+	osSetThreadSlotValue(Thread_Index, 0);
+	osSetThreadSlotValue(QV_Index, 0);
     {
 	    if (th)
 	    {

@@ -250,8 +250,7 @@ static PageTableEntry* allocPageTable()
     minPage = min(minPage, SysGlobals.firstPage);
     maxPage = max(maxPage, SysGlobals.firstPage + SysGlobals.numReservedPages);
 
-    mem = (byte*)VirtualAlloc(NULL, (maxPage + 1) * sizeof(PageTableEntry),
-        MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+    mem = (byte*)osAllocateMemory((maxPage + 1) * sizeof(PageTableEntry));
     return (PageTableEntry*)mem;
 }
 
@@ -311,7 +310,7 @@ static void UnWriteProtectPage(ULONG32 page_id)
     if (PageTable[page_id].flags & Protected_Bit)
     {
         ClrProtectFlag(page_id);
-        ret = VirtualProtect(page_address(page_id), PAGE_SIZE,	PAGE_EXECUTE_READWRITE, &oldProtect);
+        ret = osProtectMemory(page_address(page_id), PAGE_SIZE, true);
         if (!ret)
         {
             err = GetLastError();
@@ -365,7 +364,7 @@ void LispHeap::alloc(unsigned long size, unsigned long overflowVal,
     sizeMem = size;
     size /= sizeof(Node);
 
-    mem = (byte*)VirtualAlloc(NULL, reserveRequested, MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    mem = (byte*)osReserveMemory(reserveRequested);
     if (!mem)
     {
         // if we couldn't reserve that much, try to at least reserve half that amount.
@@ -373,7 +372,7 @@ void LispHeap::alloc(unsigned long size, unsigned long overflowVal,
         while (!mem && reserveRequested > (size * 2))
         {
             reserveRequested = (reserveRequested / 2) & ~0xfff;
-            mem = (byte*)VirtualAlloc(NULL, reserveRequested, MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+            mem = (byte*)osReserveMemory(reserveRequested);
         }
         if (!mem)
             return;
@@ -393,7 +392,7 @@ void LispHeap::alloc(unsigned long size, unsigned long overflowVal,
 LispHeap::~LispHeap()
 {
     if (mem)
-        VirtualFree(mem, sizeMem, MEM_DECOMMIT);
+        osDecommitMemory(mem, sizeMem);
 }
 
 void LispHeap::writeProtectAllPages()
@@ -404,8 +403,7 @@ void LispHeap::writeProtectAllPages()
 		DWORD oldProtect = 0;
 		BOOL ret = 0;
 		DWORD err = 0;
-		ret = VirtualProtect(page_address(firstPage), PAGE_SIZE * numPages,
-			PAGE_EXECUTE_READ, &oldProtect);
+		ret = osProtectMemory(page_address(firstPage), PAGE_SIZE * numPages, false);
 		if (!ret)
 		{
 			err = GetLastError();
@@ -426,8 +424,7 @@ void LispHeap::unWriteProtectAllPages()
 	DWORD oldProtect = 0;
 	BOOL ret = 0;
 	DWORD err = 0;
-	ret = VirtualProtect(page_address(firstPage), PAGE_SIZE * numPages,
-		PAGE_EXECUTE_READWRITE, &oldProtect);
+	ret = osProtectMemory(page_address(firstPage), PAGE_SIZE * numPages, true);
 	if (!ret)
 	{
 		err = GetLastError();
@@ -448,9 +445,8 @@ int LispHeap::decommitAllPages()
     BOOL ret = 1;
     DWORD err = 0;
     if (firstUncommittedPage > firstPage)
-        ret = VirtualFree((void*)page_address(firstPage),
-            PAGE_SIZE * (firstUncommittedPage - firstPage),
-            MEM_DECOMMIT);
+        ret = osDecommitMemory((void*)page_address(firstPage),
+            PAGE_SIZE * (firstUncommittedPage - firstPage));
     firstUncommittedPage = firstPage;
     if (!ret)
     {
@@ -469,11 +465,9 @@ int LispHeap::commitAllPages()
     DWORD err = 0;
     if (firstUncommittedPage < (firstPage + numPages))
     {
-        ret = (void*)VirtualAlloc((void*)page_address(firstUncommittedPage),
-                PAGE_SIZE * (firstPage + numPages - firstUncommittedPage),
-                MEM_COMMIT, PAGE_EXECUTE_READWRITE);
-        result = ret ? 1 : 0;
-        if (!ret)
+        result = osCommitMemory((void*)page_address(firstUncommittedPage),
+                PAGE_SIZE * (firstPage + numPages - firstUncommittedPage)) ? 1 : 0;
+        if (!result)
         {
             err = GetLastError();
         }
@@ -494,14 +488,13 @@ int LispHeap::commitTrailingPages(int readonly)
 int LispHeap::commitPage(byte* addr, int readonly)
 {
     unsigned long i = 0;
-    void* ret = 0;
+    bool ret = false;
     DWORD err = 0;
     unsigned long newpage = 0;
     newpage = address_to_page(addr);
     assert(newpage >= firstUncommittedPage);
-    ret = (void*)VirtualAlloc((byte*)page_address(firstUncommittedPage),
-                (newpage - firstUncommittedPage + 1) * PAGE_SIZE,
-                MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+    ret = osCommitMemory((byte*)page_address(firstUncommittedPage),
+                (newpage - firstUncommittedPage + 1) * PAGE_SIZE);
     firstUncommittedPage = newpage + 1;
     if (!ret)
     {
@@ -599,11 +592,6 @@ int LispHeap::grow(long bytesToGrow)
 //	Allocates a 2-cell block
 //
 
-//	Inline assembly calls these through a pointer: the name of an imported
-//	function does not mean the same thing to every compiler there.
-static void (WINAPI * const enterCriticalSection)(LPCRITICAL_SECTION) = EnterCriticalSection;
-static void (WINAPI * const leaveCriticalSection)(LPCRITICAL_SECTION) = LeaveCriticalSection;
-
 __declspec(naked) void EnterGCCriticalSection()
 {
     __asm
@@ -622,7 +610,7 @@ __declspec(naked) void EnterGCCriticalSection()
 		push	4	;; push argument length (bytes)
 		lea		eax, dword ptr GCCriticalSection.m_sect
 		push	eax
-		call	dword ptr enterCriticalSection
+		call	osEnterLock
 		add		esp, 4	;; pop argument length
 	}
 
@@ -654,7 +642,7 @@ __declspec(naked) void LeaveGCCriticalSection()
 		push	4	;; push argument length (bytes)
 		lea		eax, dword ptr GCCriticalSection.m_sect
 		push	eax
-		call	dword ptr leaveCriticalSection
+		call	osLeaveLock
 		add		esp, 4	;; pop argument length
 	}
 
@@ -705,7 +693,7 @@ __declspec(naked) void EnterGCCriticalSection()
 		push	4	;; push argument length (bytes)
         lea		eax, dword ptr GCCriticalSection.m_sect
         push	eax
-        call	dword ptr enterCriticalSection
+        call	osEnterLock
 		add		esp, 4	;; pop argument length
 
         ;; pop foreign stack context
@@ -749,7 +737,7 @@ __declspec(naked) void LeaveGCCriticalSection()
  		push	4	;; push argument length (bytes)
         lea		eax, dword ptr GCCriticalSection.m_sect
         push	eax
-        call	dword ptr leaveCriticalSection
+        call	osLeaveLock
 		add		esp, 4	;; pop argument length
 
         ;; pop foreign stack context
@@ -1403,7 +1391,7 @@ void garbageCollect(long level)
             gStackEnd = gBasePointer;
             gBasePointer = *(unsigned long**)gBasePointer;
 
-            QueryPerformanceCounter((LARGE_INTEGER*)&GCTime1);
+            GCTime1 = osPerformanceCounter();
 
             // suspend all threads but the current one
             collecting = 1;
@@ -1576,7 +1564,7 @@ void garbageCollect(long level)
         frame.leave();
         
         // add garbage collection time
-        QueryPerformanceCounter((LARGE_INTEGER*)&GCTime2);
+        GCTime2 = osPerformanceCounter();
         GCTimeElapsed = GCTime2 - GCTime1;
 		GCTimeTotal += GCTimeElapsed;
         bn = bignumNode(wrapInteger(2));
@@ -1965,7 +1953,7 @@ promoteExecutingFunctions()
     LispObj f = 0;
     LispObj* regs = 0;
     ThreadRecord* tr = ThreadList.getList();
-    ThreadRecord* currThread = (ThreadRecord*)TlsGetValue(Thread_Index);
+    ThreadRecord* currThread = (ThreadRecord*)osThreadSlotValue(Thread_Index);
     LispObj* stackStart = currThread->stackStart;
     unsigned long* qv = 0;
     int index = 0;
@@ -2097,10 +2085,10 @@ static void recordObjectStarts(LispHeap* fromSpace)
     if (size > ObjectStartBitsSize)
     {
         if (ObjectStartBits)
-            VirtualFree(ObjectStartBits, 0, MEM_RELEASE);
+            osFreeMemory(ObjectStartBits);
         ObjectStartBitsSize = 0;
         size = (size + 0xffff) & ~0xffff;
-        ObjectStartBits = (byte*)VirtualAlloc(0, size * 2, MEM_COMMIT, PAGE_READWRITE);
+        ObjectStartBits = (byte*)osAllocateMemory(size * 2);
         if (!ObjectStartBits)
             return;			// nothing is recorded: every word is trusted, as it used to be
         ObjectStartBitsSize = size;
@@ -2288,7 +2276,7 @@ const int ForeignStackHeader = UvectorTag + (ForeignStackType << 3);
 static void
 checkStackRoots(LispHeap* fromSpace, LispHeap* toSpace)
 {
-    ThreadRecord* currThread = (ThreadRecord*)TlsGetValue(Thread_Index);
+    ThreadRecord* currThread = (ThreadRecord*)osThreadSlotValue(Thread_Index);
     LispObj* stackStart = currThread->stackStart;
     LispObj dummy = 0;
     LispObj* start = stackStart;
@@ -3356,13 +3344,12 @@ extern "C" int uncompress(byte* dest,   unsigned long* destLen,
 
 byte* allocateCompressionBuffer(unsigned long size)
 {
-    return (byte*)VirtualAlloc(0, size, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+    return (byte*)osAllocateMemory(size);
 }
 
 void freeCompressionBuffer(byte* buf)
 {
-    if (buf)
-        VirtualFree(buf, 0, MEM_RELEASE);
+    osFreeMemory(buf);
 }
 
 void writeHeap(FILE* writeHeap_os)
@@ -3541,7 +3528,7 @@ void readHeap(FILE* is)
     {
         ExceptionFrame frame(handleStructuredException);
         {
-            ThreadRecord* currThread = (ThreadRecord*)TlsGetValue(Thread_Index);
+            ThreadRecord* currThread = (ThreadRecord*)osThreadSlotValue(Thread_Index);
             LispObj* stackStart = currThread->stackStart;
             ThreadList.Lock();
             flushEphemeralHeaps();
@@ -3662,7 +3649,7 @@ void readHeap(FILE* is)
                 else
                 if (type == FOREIGN_HEAP_TYPE_CRITICAL_SECTION)
                 {
-                    InitializeCriticalSection((CRITICAL_SECTION*)*(void**)paddr);
+                    osInitializeLock((OsLock*)*(void**)paddr);
                 }
                 p += (size + sizeof(long) + sizeof(void*) + sizeof(long));
             }

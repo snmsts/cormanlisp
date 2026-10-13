@@ -14,6 +14,8 @@
 #include <windows.h>
 #include <assert.h>
 
+#include "Os.h"
+
 #ifndef PLSERVERDLL
 #ifdef _PLSERVER
 #define PLSERVERDLL __declspec(dllexport)
@@ -83,12 +85,12 @@ protected:
 class CriticalSection
 {
 public:
-	CriticalSection() { InitializeCriticalSection(&m_sect); }
-	~CriticalSection(){	DeleteCriticalSection(&m_sect); }
-	void Enter()	  { EnterCriticalSection(&m_sect); }
-	void Leave()	  { LeaveCriticalSection(&m_sect); }
+	CriticalSection() { osInitializeLock(&m_sect); }
+	~CriticalSection(){	osDeleteLock(&m_sect); }
+	void Enter()	  { osEnterLock(&m_sect); }
+	void Leave()	  { osLeaveLock(&m_sect); }
 public:
-	CRITICAL_SECTION m_sect;
+	OsLock m_sect;
 };
 
 inline PLSyncObject::operator HANDLE() const

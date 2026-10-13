@@ -178,6 +178,7 @@ add_library(cormanlisp_kernel OBJECT
   "${_server}/src/LispMath.cpp"
   "${_server}/src/LispThreadQueue.cpp"
   "${_server}/src/MemoryReport.cpp"
+  "${_server}/src/OsWindows.cpp"
   "${_server}/src/Read.cpp"
   "${_server}/src/Stdafx.cpp"
   "${_server}/src/ThreadClasses.cpp"

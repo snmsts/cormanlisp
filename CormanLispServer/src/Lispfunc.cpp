@@ -865,9 +865,8 @@ static LARGE_INTEGER largeTime;
 LispFunction(Get_Internal_Run_Time)
 {
 	LISP_FUNC_BEGIN(0);
-	BOOL rv = 0;
 	ret = bignumNode(wrapInteger(2));
-	rv = QueryPerformanceCounter(&largeTime);
+	largeTime.QuadPart = osPerformanceCounter();
 	UVECTOR(ret)[BIGNUM_FIRST_CELL]		 = (LispObj)largeTime.LowPart;
 	UVECTOR(ret)[BIGNUM_FIRST_CELL + 1]  = (LispObj)largeTime.HighPart;
 
@@ -877,8 +876,7 @@ LispFunction(Get_Internal_Run_Time)
 LispFunction(Get_Time_Units_Per_Second)
 {
 	LISP_FUNC_BEGIN(0);
-	BOOL rv = 0;
-	rv = QueryPerformanceFrequency(&largeTime);
+	largeTime.QuadPart = osPerformanceFrequency();
 	ret = createLispInteger(largeTime.LowPart);
 	LISP_FUNC_RETURN(ret);
 }
@@ -887,7 +885,7 @@ LispFunction(Get_Millisecond_Count)
 {
 	LISP_FUNC_BEGIN(0);
 
-	ret = wrapInteger(GetTickCount());
+	ret = wrapInteger(osMillisecondCount());
 
 	LISP_FUNC_RETURN(ret);
 }
@@ -3639,7 +3637,7 @@ LispFunction(Enter_Critical_Section)
 		Error("Not a valid CRITICAL-SECTION object: ~A", LISP_ARG(0));
 	if (foreignHeapType(obj) != wrapInteger(FOREIGN_HEAP_TYPE_CRITICAL_SECTION))
 		Error("Not a valid CRITICAL-SECTION object: ~A", LISP_ARG(0));
-	EnterCriticalSection((CRITICAL_SECTION*)foreignPtr(obj));
+	osEnterLock((OsLock*)foreignPtr(obj));
 	LISP_FUNC_RETURN(NIL);
 }
 
@@ -3651,7 +3649,7 @@ LispFunction(Leave_Critical_Section)
 		Error("Not a valid CRITICAL-SECTION object: ~A", LISP_ARG(0));
 	if (foreignHeapType(obj) != wrapInteger(FOREIGN_HEAP_TYPE_CRITICAL_SECTION))
 		Error("Not a valid CRITICAL-SECTION object: ~A", LISP_ARG(0));
-	LeaveCriticalSection((CRITICAL_SECTION*)foreignPtr(obj));
+	osLeaveLock((OsLock*)foreignPtr(obj));
 	LISP_FUNC_RETURN(NIL);
 }
 
@@ -3662,11 +3660,11 @@ LispFunction(Allocate_Critical_Section)
 	setUvectorType(ret, ForeignHeapType);
 
 	// allocate 4 byte multiples
-	foreignPtr(ret) = (LispObj)CAlloc(sizeof(CRITICAL_SECTION));
-	foreignHeapSize(ret) = wrapInteger(sizeof(CRITICAL_SECTION));
+	foreignPtr(ret) = (LispObj)CAlloc(sizeof(OsLock));
+	foreignHeapSize(ret) = wrapInteger(sizeof(OsLock));
 	foreignHeapType(ret) = wrapInteger(FOREIGN_HEAP_TYPE_CRITICAL_SECTION);
 	addFinalizationObject(ret, symbolFunction(DEALLOCATE_CRITICAL_SECTION));
-	InitializeCriticalSection((CRITICAL_SECTION*)foreignPtr(ret));
+	osInitializeLock((OsLock*)foreignPtr(ret));
 	LISP_FUNC_RETURN(ret);
 }
 
@@ -3678,7 +3676,7 @@ LispFunction(Deallocate_Critical_Section)
 		Error("Not a CRITICAL-SECTION object: ~A", obj);
 	if (foreignPtr(obj) != 0)
 	{
-		DeleteCriticalSection((CRITICAL_SECTION*)foreignPtr(obj));
+		osDeleteLock((OsLock*)foreignPtr(obj));
 		CFree((void*)foreignPtr(obj));
 		foreignPtr(obj) = 0;
 	}
@@ -4668,7 +4666,7 @@ LispFunction(Stack_Trace)
 	long i = 0;
 	FunctEntry* funcEntry = 0;
 	long count = 30;  // maximum of 30 frames
-	LispObj* stackStart = ((ThreadRecord*)TlsGetValue(Thread_Index))->stackStart;
+	LispObj* stackStart = ((ThreadRecord*)osThreadSlotValue(Thread_Index))->stackStart;
 
 	__asm mov basePointer, ebp
 

@@ -14,6 +14,7 @@
 #include <stdlib.h>
 
 #include "ExceptionFrame.h"
+#include "Os.h"
 
 //	EnterJumpContext() and ResumeJumpContext() address the members by number.
 static char contextLayout[
@@ -120,15 +121,15 @@ void ExceptionFrame::abandoned()
 }
 
 //	The innermost KernelCatch of each thread.
-static DWORD KernelCatchIndex = TlsAlloc();
+static OsThreadSlot KernelCatchIndex = osAllocateThreadSlot();
 
 KernelCatch::KernelCatch()
 {
 	m_value = 0;
 	m_context.m_eip = 0;
 	m_handlers = exceptionList();
-	m_next = (KernelCatch*)TlsGetValue(KernelCatchIndex);
-	TlsSetValue(KernelCatchIndex, this);
+	m_next = (KernelCatch*)osThreadSlotValue(KernelCatchIndex);
+	osSetThreadSlotValue(KernelCatchIndex, this);
 	m_registered = true;
 }
 
@@ -141,14 +142,14 @@ void KernelCatch::leave()
 {
 	if (m_registered)
 	{
-		TlsSetValue(KernelCatchIndex, m_next);
+		osSetThreadSlotValue(KernelCatchIndex, m_next);
 		m_registered = false;
 	}
 }
 
 void KernelThrow(unsigned long value)
 {
-	KernelCatch* catcher = (KernelCatch*)TlsGetValue(KernelCatchIndex);
+	KernelCatch* catcher = (KernelCatch*)osThreadSlotValue(KernelCatchIndex);
 	if (!catcher)
 	{
 		OutputDebugString("Error: a kernel error was raised with nothing to catch it!!\n");
