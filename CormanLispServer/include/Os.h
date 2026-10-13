@@ -226,6 +226,9 @@ extern void* osLibrarySymbol(void* library, const char* name);
 //	thread failed.
 extern unsigned long osLastError();
 
+//	The name of the operating system, in capitals.
+extern const char* osName();
+
 //
 //	The process
 //

@@ -208,6 +208,11 @@ void* osLibrarySymbol(void* library, const char* name)
 	return (void*)GetProcAddress((HMODULE)library, name);
 }
 
+const char* osName()
+{
+	return "WINDOWS";
+}
+
 unsigned long osProcessId()
 {
 	return GetCurrentProcessId();

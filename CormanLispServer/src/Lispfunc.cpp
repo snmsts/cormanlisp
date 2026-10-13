@@ -3513,6 +3513,14 @@ LispFunction(CormanLisp_Client_Type)
 	LISP_FUNC_RETURN(wrapInteger(CormanLispClientType));
 }
 
+//	The name of the operating system, as a string in capitals.
+LispFunction(Operating_System)
+{
+	LISP_FUNC_BEGIN(0);
+	ret = stringNode(osName());
+	LISP_FUNC_RETURN(ret);
+}
+
 // This may currently only be called by one thread at a time.
 LispFunction(Allocate_Foreign_Jump_Table_Entry)
 {
@@ -4378,6 +4386,7 @@ FunctEntry functTable[] =
 	{	"DISPLAY-URL",				Display_URL				},
 	{	"ADD-MENU-ITEM",			Add_Menu_Item			},	// not currently used anywhere 03/13/00
 	{	"CORMANLISP-CLIENT-TYPE",	CormanLisp_Client_Type	},
+	{	"%OPERATING-SYSTEM",		Operating_System		},
 	{	"ARRAY-TYPE",				Array_Type				},	// TDE: replace with lisp code 03/13/00
 	{	"MOD-BIGNUMS",				Mod_Bignums				},		// debug function
 	{	"DIVIDE-BIGNUMS",			Divide_Bignums			},		// debug function

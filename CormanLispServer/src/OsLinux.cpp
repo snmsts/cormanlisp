@@ -639,6 +639,11 @@ unsigned long osLastError()
 	return (unsigned long)errno;
 }
 
+const char* osName()
+{
+	return "LINUX";
+}
+
 //
 //	The process
 //

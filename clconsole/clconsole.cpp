@@ -23,6 +23,8 @@ static long openURL(const char* url);
 static void sleepMilliseconds(unsigned long milliseconds);
 static bool sameIgnoringCase(const char* a, const char* b);
 extern const char* const consoleAppName;
+extern const char* const exitCommand;
+extern const char* const exitCommandWhenInputEnds;
 
 static char gModuleName[260];
 static char gImageName [260];
@@ -99,8 +101,7 @@ int mainx(int argc, char* argv[])
 	if (execFile)
 	{
 		LoadFile(execFile);
-		char exitCommand[] = "(win:ExitProcess 0)\n";
-		KernelProcessSource(exitCommand, sizeof(exitCommand));
+		KernelProcessSource(exitCommand, strlen(exitCommand) + 1);
 	}
 	/*
 	else
@@ -130,9 +131,8 @@ int mainx(int argc, char* argv[])
 			// with an expression which will generate a read error (in most
 			// situations--could still be defeated if it comes inside a string
 			// or comment or something).
-			char exitCommand[] = "(win:ExitProcess 0) \n #< expression not finished > \n (win:ExitProcess 0)\n";
 			quitting = true;
-			KernelProcessSource(exitCommand, sizeof(exitCommand));
+			KernelProcessSource(exitCommandWhenInputEnds, strlen(exitCommandWhenInputEnds) + 1);
 			sleepMilliseconds(1000);
 		}
 	}
@@ -281,6 +281,9 @@ static void LoadFile(char* filename)
 #include "ErrorMessage.h"
 
 const char* const consoleAppName = "CLCONSOLE.EXE";
+const char* const exitCommand = "(win:ExitProcess 0)\n";
+const char* const exitCommandWhenInputEnds =
+	"(win:ExitProcess 0) \n #< expression not finished > \n (win:ExitProcess 0)\n";
 
 static const char SERVER_TITLE[] = "CormanLispServer.dll";
 static char LispServerPath[MAX_PATH + 1 + sizeof(SERVER_TITLE)];
@@ -392,6 +395,11 @@ static bool sameIgnoringCase(const char* a, const char* b)
 #include <unistd.h>
 
 const char* const consoleAppName = "cormanlisp";
+
+//	The kernel tells this program to shut down, and it exits.
+const char* const exitCommand = "(cl::%lisp-shutdown \"\")\n";
+const char* const exitCommandWhenInputEnds =
+	"(cl::%lisp-shutdown \"\") \n #< expression not finished > \n (cl::%lisp-shutdown \"\")\n";
 
 //	The kernel is part of this program.
 static bool loadKernel()

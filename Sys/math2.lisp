@@ -26,51 +26,54 @@
 ;;;
 ;(defconstant e (exp 1))
 
+;;; The library which has the mathematical functions of C.
+(defconstant c-math-library #+os-windows "msvcrt.dll" #-os-windows "libm.so.6")
+
 (ct:defun-dll c-log ((d :double-float))
    :return-type :double-float
-   :library-name "msvcrt.dll"
+   :library-name c-math-library
    :entry-name "log"
    :linkage-type :c)
 
 (ct:defun-dll c-sin ((d :double-float))
    :return-type :double-float
-   :library-name "msvcrt.dll"
+   :library-name c-math-library
    :entry-name "sin"
    :linkage-type :c)
 
 (ct:defun-dll c-cos ((d :double-float))
    :return-type :double-float
-   :library-name "msvcrt.dll"
+   :library-name c-math-library
    :entry-name "cos"
    :linkage-type :c)
 
 (ct:defun-dll c-atan2 ((d1 :double-float)(d2 :double-float))
    :return-type :double-float
-   :library-name "msvcrt.dll"
+   :library-name c-math-library
    :entry-name "atan2"
    :linkage-type :c)
 
 (ct:defun-dll c-atan ((d1 :double-float))
    :return-type :double-float
-   :library-name "msvcrt.dll"
+   :library-name c-math-library
    :entry-name "atan"
    :linkage-type :c)
 
 (ct:defun-dll c-pow ((x :double-float)(y :double-float))
    :return-type :double-float
-   :library-name "msvcrt.dll"
+   :library-name c-math-library
    :entry-name "pow"
    :linkage-type :c)
 
 (ct:defun-dll c-exp ((x :double-float))
    :return-type :double-float
-   :library-name "msvcrt.dll"
+   :library-name c-math-library
    :entry-name "exp"
    :linkage-type :c)
 
 (ct:defun-dll c-atof ((d (:char *)))
    :return-type :double-float
-   :library-name "msvcrt.dll"
+   :library-name c-math-library
    :entry-name "atof"
    :linkage-type :c)
 
