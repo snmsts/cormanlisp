@@ -21,7 +21,7 @@
 
 ;;; Set ccl:*auto-update-enabled* to NIL if you wish to disable
 ;;; automatic checking for updates (patches) by the IDE.
-(setf ccl:*auto-update-enabled* nil)
+#+os-windows (setf ccl:*auto-update-enabled* nil)
 
 ;; for testing only
 ;;(defparameter *patch-root-directory* "/CormanLisp/patches/3_01f1/")
@@ -49,19 +49,23 @@
 ;;; To define a custom color:
 ;;; example: (defconstant red (win:RGB 255 0 0))
 ;;;
+#+os-windows
 (setf ide:comment-format 
     (ide:make-text-format 
         :color ide:dark-green
         :italic t))
 
+#+os-windows
 (setf ide:keyword-format 
     (ide:make-text-format 
         :color ide:blue))
 
+#+os-windows
 (setf ide:lisp-symbol-format 
     (ide:make-text-format 
         :bold t))
 
+#+os-windows
 (setf ide:string-format 
     (ide:make-text-format 
         :color (win:RGB #xa0 #x00 #x00)
@@ -69,6 +73,7 @@
 
 ;; the color of the user's preference will be used if it has been set, and
 ;; the color of normal-format ignored
+#+os-windows
 (setf ide:normal-format (ide:make-text-format :bold nil :italic nil :color ide:black))
 
 (when (eq (cormanlisp-client-type) :console-client)
@@ -90,6 +95,7 @@
 ;;; set your own declaration symbols list
 ;; eg. (setf ide:*declaration-symbols* '("defun" "define-symbol-macro")) or
 ;;     (setf ide:*declaration-symbols* (append ide:*declaration-symbols* '("defwinconstant" "defwinapi")))
+#+os-windows
 (setf ide:*declaration-symbols* '("defun" "defconstant" "defparameter" "defvar" "defclass" 
                                "defmacro" "defmethod" "defasm" "defop" "defgeneric"
                                "deftype" "defstruct" "defsetf" "defpackage" "in-package"))
@@ -98,6 +104,7 @@
 (cl::truncate-command-history 0)
 
 ;; Auto-update feature
+#+os-windows
 (when (and ccl:*auto-update-enabled*
         (eq (cormanlisp-client-type) :ide-client))
     (ccl:auto-update))

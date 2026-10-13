@@ -51,7 +51,7 @@
 (load-file "sys/win32.lisp")
 (load-file "sys/win-conditions.lisp")
 (load-file "sys/os.lisp")
-(load-file "sys/com.lisp")
+#+os-windows (load-file "sys/com.lisp")
 (load-file "sys/winsock.lisp")
 (load-file "sys/time.lisp")
 (load-file "sys/math2.lisp")
@@ -66,7 +66,8 @@
 (load-file "sys/open-file.lisp")
 (load-file "sys/menus.lisp")
 (load-file "sys/registry.lisp")
-(load-file "sys/edit-window.lisp")
+#+os-windows (load-file "sys/edit-window.lisp")
+#-os-windows (defpackage "IDE")		; which files loaded later expect to be there
 (load-file "sys/imagehlp.lisp")
 (load-file "sys/map-file.lisp")
 (load-file "sys/compile-file.lisp")
@@ -90,18 +91,19 @@
   ;; use Common Lisp style indenting for the IF form
   (setf (cdr (assoc "IF" ide::*lisp-keywords* :test #'string-equal)) -1))
 (load-file "sys/code-indenter.lisp")
-(load-file "sys/context-menu.lisp")
+#+os-windows (load-file "sys/context-menu.lisp")
 (load-file "sys/setf-expander.lisp")
-(load-file "sys/sockets.lisp")
+#+os-windows (load-file "sys/sockets.lisp")
 (load-file "sys/xp.lisp")
 (load-file "sys/threads.lisp")
 (load-file "sys/version.lisp")
-(load-file "sys/auto-update.lisp")
-(load-file "sys/jumpmenu.lisp")
-(load-file "sys/ide-menus.lisp")
+#+os-windows (load-file "sys/auto-update.lisp")
+#+os-windows (load-file "sys/jumpmenu.lisp")
+#+os-windows (load-file "sys/ide-menus.lisp")
 
 ;; Load patches
 (in-package :cl)
+#+os-windows
 (let ((patch-files
         (sort (directory 
                     (merge-pathnames "CormanLisp_3_0_patch_??.lisp" (ccl::local-patches-directory)))
