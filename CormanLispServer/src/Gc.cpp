@@ -198,6 +198,7 @@ static LispObj AllocLargeVector(long num);
 static void verifyHeapBlocks();
 unsigned long looksLikeEBP(unsigned long addr);
 static void promoteJumpBufferBlocks(LispObj* x, LispHeap* toSpace);
+static void recordObjectStarts(LispHeap* fromSpace);
 static void offsetHeapAddresses(long offset);
 static void offsetGlobals(long offset, unsigned long origAddress, unsigned long origAddressEnd);
 static void offsetCode(LispObj obj, long offset);
@@ -1741,6 +1742,9 @@ checkGlobalRoots(LispHeap* fromSpace, LispHeap* toSpace)
 {
     GCFromSpace = fromSpace;
     GCToSpace = toSpace;
+
+    // this is the first thing done to a heap which is being collected
+    recordObjectStarts(fromSpace);
     FinalizationNode* n = 0;
     Node* p = 0;
     ThreadRecord* tr = ThreadList.getList();
@@ -2054,6 +2058,110 @@ promoteExecutingFunctions()
     regs = 0;
 }
 
+//
+//	Object starts
+//
+//	The stacks and the registers are scanned conservatively: a word which
+//	looks like a reference into the heap being collected is taken for one.
+//	The frames of the kernel's own functions hold more than references,
+//	though. A compiler may leave parts of a frame unwritten, and then they
+//	still hold whatever an earlier, deeper call left there: an old return
+//	address into compiled code, the saved registers of a CATCH which has
+//	long been exited. Promoting such a word as if it were an object writes
+//	a forwarding pointer into the middle of a live one.
+//
+//	So before anything is promoted out of a heap, the start of each of
+//	its objects is recorded, and a word found on a stack or in a register
+//	only counts as a reference if it points to one of them, with the tag
+//	which goes with that kind of object.
+//
+static byte* ObjectStartBits = 0;				// a bit for each node: an object starts here
+static byte* UvectorStartBits = 0;				// a bit for each node: a uvector starts here
+static unsigned long ObjectStartBitsSize = 0;	// bytes allocated for each of the two
+static Node* ObjectStartsHeap = 0;				// start of the heap they describe
+static Node* ObjectStartsLimit = 0;				// the objects below this are recorded
+static bool ObjectStartsComplete = false;		// the whole heap could be walked
+
+static void recordObjectStarts(LispHeap* fromSpace)
+{
+    Node* p = fromSpace->start;
+    Node* end = fromSpace->current;
+    unsigned long size = ((end - p) + 7) / 8;
+    unsigned long n = 0;
+    unsigned long length = 0;
+
+    ObjectStartsHeap = p;
+    ObjectStartsLimit = p;
+    ObjectStartsComplete = false;
+
+    if (size > ObjectStartBitsSize)
+    {
+        if (ObjectStartBits)
+            VirtualFree(ObjectStartBits, 0, MEM_RELEASE);
+        ObjectStartBitsSize = 0;
+        size = (size + 0xffff) & ~0xffff;
+        ObjectStartBits = (byte*)VirtualAlloc(0, size * 2, MEM_COMMIT, PAGE_READWRITE);
+        if (!ObjectStartBits)
+            return;			// nothing is recorded: every word is trusted, as it used to be
+        ObjectStartBitsSize = size;
+        UvectorStartBits = ObjectStartBits + size;
+    }
+    memset(ObjectStartBits, 0, ObjectStartBitsSize);
+    memset(UvectorStartBits, 0, ObjectStartBitsSize);
+
+    while (p < end)
+    {
+        n = p - fromSpace->start;
+        ObjectStartBits[n >> 3] |= (1 << (n & 7));
+        if (gettag(p->car) == UvectorLengthTag)
+        {
+            length = (p->car) >> 8;
+            if (length == 0 || length > (unsigned long)(end - p))
+            {
+                // This heap cannot be walked. What follows is trusted.
+                OutputDebugString("Error: Invalid uvector found while recording the heap objects!!\n");
+                break;
+            }
+            UvectorStartBits[n >> 3] |= (1 << (n & 7));
+            p += length;
+        }
+        else
+            p++;
+    }
+    ObjectStartsLimit = p;
+    ObjectStartsComplete = (p >= end);
+}
+
+// n has passed isHeapPointer()
+static bool isObjectStart(LispObj n)
+{
+    Node* p = (Node*)stripTag(n);
+    unsigned long i = 0;
+    bool uvector = false;
+
+    if (GCFromSpace->start != ObjectStartsHeap)
+        return true;		// not recorded for this heap
+    if (p >= ObjectStartsLimit)
+        return !ObjectStartsComplete;
+    i = p - ObjectStartsHeap;
+    if (!(ObjectStartBits[i >> 3] & (1 << (i & 7))))
+        return false;
+    uvector = (UvectorStartBits[i >> 3] & (1 << (i & 7))) != 0;
+    return uvector == (gettag(n) == UvectorTag);
+}
+
+// A word of a stack or a register which refers to an object of the heap
+// being collected.
+#define isStackRoot(n) (isHeapPointer(n) && isObjectStart(n))
+
+// The saved registers of a CATCH used to be recognized by their marker
+// and stepped over, apart from the four which can hold references. With
+// the object starts recorded they need no special treatment, and a marker
+// which was left behind in a dead part of a frame can no longer hide the
+// live words below it. They are only stepped over when the heap could
+// not be walked.
+#define isJumpBuffer(x) (*(unsigned long*)(x) == JumpBufferMarker && !ObjectStartsComplete)
+
 static void
 checkThreadStackRoots(ThreadRecord* th, LispHeap* /*fromSpace*/, LispHeap* toSpace)
 {
@@ -2078,13 +2186,13 @@ checkThreadStackRoots(ThreadRecord* th, LispHeap* /*fromSpace*/, LispHeap* toSpa
         i = 0;
         for (x = start; x >= end; x--)
         {
-			if (EVEN(i) && *(unsigned long*)x == JumpBufferMarker)
+			if (EVEN(i) && isJumpBuffer(x))
             {
                 promoteJumpBufferBlocks(x, toSpace);
                 x -= ((JumpBufferSize / 4) - 1);
             }
 			else
-            if (EVEN(i) && isHeapPointer(*x))
+            if (EVEN(i) && isStackRoot(*x))
             {
                 promoteBlock(x, toSpace);
             }
@@ -2096,13 +2204,13 @@ checkThreadStackRoots(ThreadRecord* th, LispHeap* /*fromSpace*/, LispHeap* toSpa
     {
         for (x = start; x >= end; x--)
         {
-            if (*(unsigned long*)x == JumpBufferMarker)
+            if (isJumpBuffer(x))
             {
                 promoteJumpBufferBlocks(x, toSpace);
                 x -= ((JumpBufferSize / 4) - 1);
             }
             else
-            if (isHeapPointer(*x))
+            if (isStackRoot(*x))
             {
                 promoteBlock(x, toSpace);
             }
@@ -2121,7 +2229,7 @@ checkThreadStackRoots(ThreadRecord* th, LispHeap* /*fromSpace*/, LispHeap* toSpa
         regs[5] = (LispObj)lispContext.Edi;
         for (i = 0; i < 6; i++)
         {
-            if (isHeapPointer(regs[i]))
+            if (isStackRoot(regs[i]))
                 promoteBlock(&regs[i], toSpace);
         }
         lispContext.Eax = (DWORD)regs[0];
@@ -2152,25 +2260,25 @@ checkThreadStackRoots(ThreadRecord* th, LispHeap* /*fromSpace*/, LispHeap* toSpa
 static void promoteJumpBufferBlocks(LispObj* x, LispHeap* toSpace)
 {
     x -= 4;			// x -> EDI
-    if (isHeapPointer(*x))
+    if (isStackRoot(*x))
         promoteBlock(x, toSpace);
     x -= 2;			// x -> EDX
-    if (isHeapPointer(*x))
+    if (isStackRoot(*x))
         promoteBlock(x, toSpace);
     x--;			// x -> ECX
-    if (isHeapPointer(*x))
+    if (isStackRoot(*x))
         promoteBlock(x, toSpace);
     x--;			// x -> EBX
-    if (isHeapPointer(*x))
+    if (isStackRoot(*x))
         promoteBlock(x, toSpace);
 #if 0	// don't need to check these
-    if (isHeapPointer(*(x + 3)))
+    if (isStackRoot(*(x + 3)))
         promoteBlock((x + 3), toSpace);
-    if (isHeapPointer(*(x + 5)))
+    if (isStackRoot(*(x + 5)))
         promoteBlock((x + 5), toSpace);
-    if (isHeapPointer(*(x + 6)))
+    if (isStackRoot(*(x + 6)))
         promoteBlock((x + 6), toSpace);
-    if (isHeapPointer(*(x + 7)))
+    if (isStackRoot(*(x + 7)))
         promoteBlock((x + 7), toSpace);
 #endif
 }
@@ -2212,13 +2320,13 @@ checkStackRoots(LispHeap* fromSpace, LispHeap* toSpace)
         {
             if (EVEN(i))
             {
-                if (*(unsigned long*)x == JumpBufferMarker)
+                if (isJumpBuffer(x))
                 {
                     promoteJumpBufferBlocks(x, toSpace);
                     x -= ((JumpBufferSize / 4) - 1);
                 }
                 else
-                if (isHeapPointer(*x))
+                if (isStackRoot(*x))
                     promoteBlock(x, toSpace);
             }
             if ((i < index) && ((unsigned long)x) <= qv[(i * 2) + STACK_MARKERS_Index])
@@ -2229,13 +2337,13 @@ checkStackRoots(LispHeap* fromSpace, LispHeap* toSpace)
     {
         for (x = start; x >= gStackEnd; x--)
         {
-            if (*(unsigned long*)x == JumpBufferMarker)
+            if (isJumpBuffer(x))
             {
                 promoteJumpBufferBlocks(x, toSpace);
                 x -= ((JumpBufferSize / 4) - 1);
             }
             else
-            if (isHeapPointer(*x))
+            if (isStackRoot(*x))
                 promoteBlock(x, toSpace);
         }
     }
@@ -2255,7 +2363,7 @@ checkStackRoots(LispHeap* fromSpace, LispHeap* toSpace)
 
         for (i = 0; i < 6; i++)
         {
-            if (isHeapPointer(regs[i]))
+            if (isStackRoot(regs[i]))
                 promoteBlock(&regs[i], toSpace);
         }
 
