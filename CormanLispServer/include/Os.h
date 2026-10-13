@@ -38,6 +38,10 @@ extern void osFreeMemory(void* address);
 //	read-only page raises an access violation.
 extern bool osProtectMemory(void* address, unsigned long size, bool writable);
 
+//	To be called after machine code has been written or moved, before it
+//	is run.
+extern bool osFlushInstructionCache();
+
 //
 //	A slot which holds a value for each thread. The value is 0 in a
 //	thread which has not set it.
@@ -76,6 +80,34 @@ extern __int64 osPerformanceFrequency();
 extern unsigned long osMillisecondCount();
 
 extern void osSleep(unsigned long milliseconds);
+
+//
+//	The calendar
+//
+struct OsTime
+{
+	int year;
+	int month;			// 1 to 12
+	int dayOfWeek;		// 0 is Sunday
+	int day;
+	int hour;
+	int minute;
+	int second;
+	int milliseconds;
+};
+
+extern void osUniversalTime(OsTime* time);
+extern void osLocalTime(OsTime* time);
+extern long osSecondsSince1970();
+
+//	How many minutes local time is behind universal time, and whether
+//	daylight saving time is in effect. Returns false if that is not known.
+extern bool osTimeZone(long* minutesWest, bool* daylight);
+
+//	A file time counts the tenths of a microsecond since the start of 1601,
+//	universal time.
+extern bool osTimeToFileTime(const OsTime* time, unsigned __int64* fileTime);
+extern bool osFileTimeToTime(unsigned __int64 fileTime, OsTime* time);
 
 //
 //	Files, read or written from start to end

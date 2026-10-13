@@ -1319,7 +1319,6 @@ unsigned long garbageCollectionID = 0;
 static long gcHandleStructuredException(long exception, LPEXCEPTION_POINTERS info);
 void garbageCollect(long level)
 {
-    HANDLE process = 0;
     BOOL ret = 0;
 
     Node* temp = 0;		// careful--unwrapped pointer!
@@ -1400,8 +1399,7 @@ void garbageCollect(long level)
                 // Make sure none of the other threads are in lisp atomic units.
                 ThreadList.ensureSafeStates();
 
-                process = GetCurrentProcess();
-                ret = FlushInstructionCache(process, NULL, 0);
+                ret = osFlushInstructionCache();
 
                 EphemeralHeap2.commitTrailingPages(0);
                 EphemeralHeap2.unWriteProtectAllPages();
@@ -1545,7 +1543,6 @@ void garbageCollect(long level)
             executeGCRegistryFunctions();
             finalizeResurrectedObjects();
 
-            process = 0;
             ret = 0;
             temp = 0;
 
@@ -3357,7 +3354,6 @@ void writeHeap(FILE* writeHeap_os)
     long pageTableSize = 0;
     long CHeapBlocksSize = 0;
     unsigned long heapAddress = 0;
-    HANDLE process = 0;
     BOOL ret = 0;
     LispImageHeader header = {0};
     int compressHeap = 0;
@@ -3431,15 +3427,14 @@ void writeHeap(FILE* writeHeap_os)
             Error("Not enough memory to write lisp image to file");
         }
     }
-    process = GetCurrentProcess();
 
     // copy the static section
-    ret = FlushInstructionCache(process, NULL, 0);
+    ret = osFlushInstructionCache();
     memcpy(compressionSrcBuffer + offset, QV, staticSize);
     offset += staticSize;
 
     // copy heap base address
-    FlushInstructionCache(process, NULL, 0);
+    osFlushInstructionCache();
     heapAddress = (unsigned long)LispHeap1.start;
     memcpy(compressionSrcBuffer + offset, (char*)&heapAddress, sizeof(heapAddress));
     offset += sizeof(heapAddress);
@@ -3504,7 +3499,6 @@ void readHeap(FILE* is)
     long size = 0;
     LispObj temp = 0;
     long offset = 0;
-    HANDLE process = 0;
     unsigned char* c_blocks = 0;
     unsigned char* p = 0;
     long type = 0;
@@ -3584,8 +3578,7 @@ void readHeap(FILE* is)
                 if (length != header.uncompressedSize)
                     Error("Invalid lisp image file");
             }
-            process = GetCurrentProcess();
-            FlushInstructionCache(process, NULL, 0);
+            osFlushInstructionCache();
             memcpy(QV, compressionDestBuffer + index, header.staticSize);
             index += header.staticSize;
 

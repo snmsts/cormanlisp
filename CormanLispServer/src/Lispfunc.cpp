@@ -3058,10 +3058,8 @@ const int days_from_1900_to_1970
 LispFunction(Get_Universal_Time)
 {
 	LISP_FUNC_BEGIN(0);
-	_timeb time;
-	_ftime_s(&time);
 	ret = _Add(_Multiply(wrapInteger(days_from_1900_to_1970), wrapInteger(60 * 60)),
-			createLispInteger((long)time.time));
+			createLispInteger(osSecondsSince1970()));
 	LISP_FUNC_RETURN(ret);
 }
 
@@ -3075,15 +3073,15 @@ LispFunction(Get_Universal_Time)
 LispFunction(Local_Time_Zone)
 {
 	LISP_FUNC_BEGIN(0);
-	TIME_ZONE_INFORMATION tzi;
-	DWORD result = GetTimeZoneInformation(&tzi);
+	long bias = 0;
+	bool daylight = false;
 	LispObj daylight_time = NIL;
-	if (result == 0xffffffff)
+	if (!osTimeZone(&bias, &daylight))
 		ret = 0;			// we can't determine it
 	else
 	{
-		ret = _Divide(wrapInteger(tzi.Bias), wrapInteger(60));
-		if (result == TIME_ZONE_ID_DAYLIGHT)
+		ret = _Divide(wrapInteger(bias), wrapInteger(60));
+		if (daylight)
 			daylight_time = T;
 	}
 	ThreadQV()[MULTIPLE_RETURN_VALUES_Index] = list(ret, daylight_time, END_LIST);
@@ -3094,16 +3092,16 @@ LispFunction(Local_Time_Zone)
 LispFunction(Get_System_Time)
 {
 	LISP_FUNC_BEGIN(0);
-	SYSTEMTIME time;
-	GetSystemTime(&time);
-	ret = list(wrapInteger(time.wYear),
-			   wrapInteger(time.wMonth),
-			   wrapInteger(time.wDayOfWeek),
-			   wrapInteger(time.wDay),
-			   wrapInteger(time.wHour),
-			   wrapInteger(time.wMinute),
-			   wrapInteger(time.wSecond),
-			   wrapInteger(time.wMilliseconds),
+	OsTime time;
+	osUniversalTime(&time);
+	ret = list(wrapInteger(time.year),
+			   wrapInteger(time.month),
+			   wrapInteger(time.dayOfWeek),
+			   wrapInteger(time.day),
+			   wrapInteger(time.hour),
+			   wrapInteger(time.minute),
+			   wrapInteger(time.second),
+			   wrapInteger(time.milliseconds),
 			   END_LIST);
 	LISP_FUNC_RETURN(ret);
 }
@@ -3111,16 +3109,16 @@ LispFunction(Get_System_Time)
 LispFunction(Get_Local_Time)
 {
 	LISP_FUNC_BEGIN(0);
-	SYSTEMTIME time;
-	GetLocalTime(&time);
-	ret = list(wrapInteger(time.wYear),
-			   wrapInteger(time.wMonth),
-			   wrapInteger(time.wDayOfWeek),
-			   wrapInteger(time.wDay),
-			   wrapInteger(time.wHour),
-			   wrapInteger(time.wMinute),
-			   wrapInteger(time.wSecond),
-			   wrapInteger(time.wMilliseconds),
+	OsTime time;
+	osLocalTime(&time);
+	ret = list(wrapInteger(time.year),
+			   wrapInteger(time.month),
+			   wrapInteger(time.dayOfWeek),
+			   wrapInteger(time.day),
+			   wrapInteger(time.hour),
+			   wrapInteger(time.minute),
+			   wrapInteger(time.second),
+			   wrapInteger(time.milliseconds),
 			   END_LIST);
 	LISP_FUNC_RETURN(ret);
 }
@@ -3128,10 +3126,10 @@ LispFunction(Get_Local_Time)
 LispFunction(System_Time_To_File_Time)
 {
 	LISP_FUNC_BEGIN(8);
-	SYSTEMTIME	time	= {0};
-	FILETIME	ftime	= {0};
+	OsTime time = {0};
+	unsigned __int64 ftime = 0;
 	LispObj bn = 0;
-	BOOL result = 0;
+	bool result = false;
 
 	checkInteger(LISP_ARG(0));
 	checkInteger(LISP_ARG(1));
@@ -3142,26 +3140,26 @@ LispFunction(System_Time_To_File_Time)
 	checkInteger(LISP_ARG(6));
 	checkInteger(LISP_ARG(7));
 
-	time.wYear			= (short)integer(LISP_ARG(0));
-	time.wMonth			= (short)integer(LISP_ARG(1));
-	time.wDayOfWeek		= (short)integer(LISP_ARG(2));
-	time.wDay			= (short)integer(LISP_ARG(3));
-	time.wHour			= (short)integer(LISP_ARG(4));
-	time.wMinute		= (short)integer(LISP_ARG(5));
-	time.wSecond		= (short)integer(LISP_ARG(6));
-	time.wMilliseconds	= (short)integer(LISP_ARG(7));
-	result = SystemTimeToFileTime(&time, &ftime);
+	time.year			= integer(LISP_ARG(0));
+	time.month			= integer(LISP_ARG(1));
+	time.dayOfWeek		= integer(LISP_ARG(2));
+	time.day			= integer(LISP_ARG(3));
+	time.hour			= integer(LISP_ARG(4));
+	time.minute		= integer(LISP_ARG(5));
+	time.second		= integer(LISP_ARG(6));
+	time.milliseconds	= integer(LISP_ARG(7));
+	result = osTimeToFileTime(&time, &ftime);
 	if (!result)
 		Error("SystemTimeToFileTime() failed, error code: ", 
 			createLispInteger(osLastError()));
 
-	if (ftime.dwHighDateTime == 0)
-		ret = createLispInteger(ftime.dwLowDateTime);
+	if ((ftime >> 32) == 0)
+		ret = createLispInteger((unsigned long)ftime);
 	else
 	{
 		bn = bignumNode(wrapInteger(2));	
-		UVECTOR(bn)[BIGNUM_FIRST_CELL] = ftime.dwLowDateTime;
-		UVECTOR(bn)[BIGNUM_FIRST_CELL + 1] = ftime.dwHighDateTime;
+		UVECTOR(bn)[BIGNUM_FIRST_CELL] = (unsigned long)ftime;
+		UVECTOR(bn)[BIGNUM_FIRST_CELL + 1] = (unsigned long)(ftime >> 32);
 		ret = bn;
 	}
 	LISP_FUNC_RETURN(ret);
@@ -3170,32 +3168,31 @@ LispFunction(System_Time_To_File_Time)
 LispFunction(File_Time_To_System_Time)
 {
 	LISP_FUNC_BEGIN(1);
-	SYSTEMTIME	time	= {0};
-	FILETIME	ftime	= {0};
+	OsTime time = {0};
+	unsigned __int64 ftime = 0;
 	LispObj n = LISP_ARG(0);
-	BOOL result = 0;
+	bool result = false;
 	if (isInteger(n))
-		ftime.dwLowDateTime = integer(n);
+		ftime = (unsigned long)integer(n);
 	else
 	if (isBignum(n))
 	{
-		ftime.dwLowDateTime = UVECTOR(n)[BIGNUM_FIRST_CELL];
-		ftime.dwHighDateTime = UVECTOR(n)[BIGNUM_FIRST_CELL + 1];
+		ftime = ((unsigned __int64)UVECTOR(n)[BIGNUM_FIRST_CELL + 1] << 32) | UVECTOR(n)[BIGNUM_FIRST_CELL];
 	}
 	else
 		Error("Invalid file time: ~A", n);
-	result = FileTimeToSystemTime(&ftime, &time);
+	result = osFileTimeToTime(ftime, &time);
 	if (!result)
 		Error("SystemTimeToFileTime() failed, error code: ",
 			createLispInteger(osLastError()));
-	ret = list(wrapInteger(time.wYear),
-			   wrapInteger(time.wMonth),
-			   wrapInteger(time.wDayOfWeek),
-			   wrapInteger(time.wDay),
-			   wrapInteger(time.wHour),
-			   wrapInteger(time.wMinute),
-			   wrapInteger(time.wSecond),
-			   wrapInteger(time.wMilliseconds),
+	ret = list(wrapInteger(time.year),
+			   wrapInteger(time.month),
+			   wrapInteger(time.dayOfWeek),
+			   wrapInteger(time.day),
+			   wrapInteger(time.hour),
+			   wrapInteger(time.minute),
+			   wrapInteger(time.second),
+			   wrapInteger(time.milliseconds),
 			   END_LIST);
 	LISP_FUNC_RETURN(ret);
 }
@@ -3510,7 +3507,7 @@ LispFunction(Create_Callback_Thunk)
 	*(unsigned char*)foreignPtr(thunkObj) = 0xA1;
 	*(unsigned long*)(((char*)foreignPtr(thunkObj)) + 1) = (unsigned long)SysGlobalsAddr;
 	*(long*)(((char*)foreignPtr(thunkObj)) + sizeGenericThunk - 4) = integer(index) + 4;
-	FlushInstructionCache(GetCurrentProcess(), NULL, 0);
+	osFlushInstructionCache();
 	LISP_FUNC_RETURN(thunkObj);
 }
 

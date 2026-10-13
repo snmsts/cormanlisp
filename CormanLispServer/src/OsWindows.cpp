@@ -8,6 +8,7 @@
 //
 
 #include "stdafx.h"
+#include <sys/timeb.h>
 
 #include "Os.h"
 
@@ -159,4 +160,83 @@ unsigned long osLastError()
 void osDebugMessage(const char* message)
 {
 	OutputDebugString(message);
+}
+
+static void fromSystemTime(const SYSTEMTIME* from, OsTime* time)
+{
+	time->year = from->wYear;
+	time->month = from->wMonth;
+	time->dayOfWeek = from->wDayOfWeek;
+	time->day = from->wDay;
+	time->hour = from->wHour;
+	time->minute = from->wMinute;
+	time->second = from->wSecond;
+	time->milliseconds = from->wMilliseconds;
+}
+
+void osUniversalTime(OsTime* time)
+{
+	SYSTEMTIME now;
+	GetSystemTime(&now);
+	fromSystemTime(&now, time);
+}
+
+void osLocalTime(OsTime* time)
+{
+	SYSTEMTIME now;
+	GetLocalTime(&now);
+	fromSystemTime(&now, time);
+}
+
+long osSecondsSince1970()
+{
+	_timeb now;
+	_ftime_s(&now);
+	return (long)now.time;
+}
+
+bool osTimeZone(long* minutesWest, bool* daylight)
+{
+	TIME_ZONE_INFORMATION tzi;
+	DWORD result = GetTimeZoneInformation(&tzi);
+	if (result == 0xffffffff)
+		return false;
+	*minutesWest = tzi.Bias;
+	*daylight = (result == TIME_ZONE_ID_DAYLIGHT);
+	return true;
+}
+
+bool osTimeToFileTime(const OsTime* time, unsigned __int64* fileTime)
+{
+	SYSTEMTIME from = {0};
+	FILETIME to = {0};
+	from.wYear = (short)time->year;
+	from.wMonth = (short)time->month;
+	from.wDayOfWeek = (short)time->dayOfWeek;
+	from.wDay = (short)time->day;
+	from.wHour = (short)time->hour;
+	from.wMinute = (short)time->minute;
+	from.wSecond = (short)time->second;
+	from.wMilliseconds = (short)time->milliseconds;
+	if (!SystemTimeToFileTime(&from, &to))
+		return false;
+	*fileTime = ((unsigned __int64)to.dwHighDateTime << 32) | to.dwLowDateTime;
+	return true;
+}
+
+bool osFileTimeToTime(unsigned __int64 fileTime, OsTime* time)
+{
+	FILETIME from = {0};
+	SYSTEMTIME to = {0};
+	from.dwLowDateTime = (DWORD)fileTime;
+	from.dwHighDateTime = (DWORD)(fileTime >> 32);
+	if (!FileTimeToSystemTime(&from, &to))
+		return false;
+	fromSystemTime(&to, time);
+	return true;
+}
+
+bool osFlushInstructionCache()
+{
+	return FlushInstructionCache(GetCurrentProcess(), NULL, 0) != 0;
 }

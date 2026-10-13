@@ -2209,7 +2209,6 @@ Cmember(LispObj item, LispObj list)
 void updateJumpTable(LispObj sym, LispObj func, LispObj env)
 {
 	ThreadRecord* tr = 0;
-	HANDLE process = 0;
 	LispObj tableIndex = 0;
 	LispObj funcaddr = 0;
 
@@ -2237,8 +2236,7 @@ void updateJumpTable(LispObj sym, LispObj func, LispObj env)
 		tr = tr->next;
 	}
 
-	process = GetCurrentProcess(); 
-	FlushInstructionCache(process, NULL, 0);
+	osFlushInstructionCache();
 	TQCriticalSection.Leave();
 	GCCriticalSection.Leave();
 }
@@ -2258,7 +2256,6 @@ void setSymbolFunction(LispObj sym, LispObj func, LispObj type)
 void updateSymbolFunctionAddress(LispObj s, LispFunc funcaddr)
 {
 	long jumpTableIndex = 0;
-	HANDLE process = 0;
 	TQCriticalSection.Enter();
 	ThreadRecord* tr = ThreadList.getList();
 	LispObj f = 0;
@@ -2281,8 +2278,7 @@ void updateSymbolFunctionAddress(LispObj s, LispFunc funcaddr)
 		}
 	}
 
-	process = GetCurrentProcess(); 
-	FlushInstructionCache(process, NULL, 0);
+	osFlushInstructionCache();
 	TQCriticalSection.Leave();
 }
 
