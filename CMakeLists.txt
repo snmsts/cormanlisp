@@ -154,6 +154,13 @@ endif()
 # for the stand-alone application stubs.
 #
 set(_server "${CMAKE_SOURCE_DIR}/CormanLispServer")
+# What makes the kernel a COM server. Nothing else in the kernel uses COM.
+set(_kernel_com_sources
+  "${_server}/src/CoConnectionPoint.cpp"
+  "${_server}/src/CoCormanLisp.cpp"
+  "${_server}/src/CoEnumConnectionPoints.cpp"
+  "${_server}/src/CoEnumConnections.cpp"
+  "${_server}/src/ComServer.cpp")
 add_library(cormanlisp_kernel OBJECT
   "${_server}/distorm/src/decoder.c"
   "${_server}/distorm/src/distorm.c"
@@ -165,10 +172,6 @@ add_library(cormanlisp_kernel OBJECT
   "${_server}/distorm/src/textdefs.c"
   "${_server}/distorm/src/wstring.c"
   "${_server}/src/CharBuf.cpp"
-  "${_server}/src/CoConnectionPoint.cpp"
-  "${_server}/src/CoCormanLisp.cpp"
-  "${_server}/src/CoEnumConnectionPoints.cpp"
-  "${_server}/src/CoEnumConnections.cpp"
   "${_server}/src/Compx86.cpp"
   "${_server}/src/CormanLispServer.cpp"
   "${_server}/src/ExceptionFrame.cpp"
@@ -185,7 +188,8 @@ add_library(cormanlisp_kernel OBJECT
   "${_server}/src/ThreadClasses.cpp"
   "${_server}/src/Unassemble.cpp"
   "${_server}/src/UserInfo.cpp"
-  "${_server}/src/Write.cpp")
+  "${_server}/src/Write.cpp"
+  ${_kernel_com_sources})
 target_include_directories(cormanlisp_kernel PUBLIC
   "${CMAKE_SOURCE_DIR}/include"
   "${_server}/include")

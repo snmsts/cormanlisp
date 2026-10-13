@@ -7,7 +7,9 @@
 //		Contents:	What the kernel asks of the operating system, on Windows.
 //
 
+#include <ws2tcpip.h>
 #include "stdafx.h"
+#include <ole2.h>
 #include <sys/timeb.h>
 #include <process.h>
 
@@ -264,6 +266,24 @@ void osCloseThread(OsThread thread)
 void osExitThread(unsigned code)
 {
 	_endthreadex(code);
+}
+
+bool osStartThreadServices()
+{
+	WSADATA wsd;
+	CoInitialize(0);
+	if (WSAStartup(MAKEWORD(2, 2), &wsd) != 0)
+	{
+		CoUninitialize();
+		return false;
+	}
+	return true;
+}
+
+void osStopThreadServices()
+{
+	WSACleanup();
+	CoUninitialize();
 }
 
 unsigned long osCurrentThreadId()

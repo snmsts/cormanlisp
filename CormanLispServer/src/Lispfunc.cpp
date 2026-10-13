@@ -3372,7 +3372,7 @@ LispFunction(Ed)
 	LispObj filename = LISP_ARG(0);
 	LispObj fp = 0;
 	checkString(filename);
-	HRESULT rv = E_FAIL;
+	long rv = -1;
 	HWND wnd = 0;
 	if (hostAttached())
 		rv = hostOpenEditWindow((char*)byteArrayStart(nullTerminate(filename)), (void**)&wnd);
@@ -3388,7 +3388,7 @@ LispFunction(Display_URL)
 	LispObj filename = LISP_ARG(0);
 	LispObj fp = 0;
 	checkString(filename);
-	HRESULT rv = E_FAIL;
+	long rv = -1;
 	HWND wnd = 0;
 	if (hostAttached())
 		rv = hostOpenURL((char*)byteArrayStart(nullTerminate(filename)), (void**)&wnd);
@@ -3408,7 +3408,7 @@ LispFunction(Add_Menu_Item)
 	LISP_FUNC_BEGIN(2);
 	LispObj menu = LISP_ARG(0);
 	LispObj item = LISP_ARG(1);
-	HRESULT rv = E_FAIL;
+	long rv = -1;
 
 	checkString(menu);
 	if (item == NIL)

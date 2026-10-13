@@ -10,20 +10,14 @@
 //							global UserInfo object.
 //
 
-#include <ws2tcpip.h>
 #include "stdafx.h"
 #include "ExceptionFrame.h"
 #include <process.h>
-#include <windows.h>
-#include <ole2.h>
 #include <string.h>
 
 #include "CormanLispServer.h"
 #include "Host.h"
 #include "lisp.h"
-
-#include "clsids.h"
-#include "CoCormanLisp.h"
 
 const UserInfo*          CurrentUserInfo    = 0;
 
@@ -40,17 +34,6 @@ CharBuf TerminalInputBuf(0x8000);
 
 static void RunLispThread(HANDLE* thread);
 
-const TCHAR *const g_szRegKeyValues[][2] =
-{
-  { __TEXT("CormanLisp.Lisp"), __TEXT("Lisp") },
-  { __TEXT("CormanLisp.Lisp\\CLSID"), __TEXT("{99AA27B3-0EAE-11d1-ACB9-00A024803258}") },
-  { __TEXT("CLSID\\{99AA27B3-0EAE-11d1-ACB9-00A024803258}"), __TEXT("Lisp") },
-  { __TEXT("CLSID\\{99AA27B3-0EAE-11d1-ACB9-00A024803258}\\InprocServer32"), g_szFileName },
-  { __TEXT("CLSID\\{99AA27B3-0EAE-11d1-ACB9-00A024803258}\\ProgID"), __TEXT("CormanLisp.Lisp") },
-};
-
-const int g_cRegKeyValues = sizeof(g_szRegKeyValues)
-                            /sizeof(*g_szRegKeyValues);
 int DLL_Loaded = false;		// we may get run when statically linked
 
 void processAttach(HINSTANCE hInstance)
@@ -106,125 +89,6 @@ DllMain(HINSTANCE hInstance, DWORD dwReason, LPVOID /*lpReserved*/)
 			break;
 	}
 	return 1;   // ok
-}
-
-LONG g_cLocks = 0;
-void SvcLock()	{ InterlockedIncrement(&g_cLocks); }
-void SvcUnlock(){ InterlockedDecrement(&g_cLocks); }
-
-class CoCormanLispClassFactory : public IClassFactory
-{
-public:
-    STDMETHODIMP QueryInterface(REFIID riid, void**ppv)
-    {
-        if (riid == IID_IUnknown)
-            *ppv = (IClassFactory*)this;
-        else if (riid == IID_IClassFactory)
-            *ppv = (IClassFactory*)this;
-        else 
-            *ppv = 0;
-        if (*ppv)
-            ((IUnknown *)*ppv)->AddRef();
-        return *ppv ? S_OK : E_NOINTERFACE;
-    }
-
-    STDMETHODIMP_(ULONG) AddRef(void)
-    {
-        SvcLock();
-        return 2;
-    }
-
-    STDMETHODIMP_(ULONG) Release(void)
-    {
-        SvcUnlock();
-        return 1;
-    }
-
-    STDMETHODIMP CreateInstance(IUnknown *pUnkOuter, REFIID riid, void **ppv)
-    {
-        *ppv = 0;
-        if (pUnkOuter)
-            return CLASS_E_NOAGGREGATION;
-
-        CoCormanLisp *p = new CoCormanLisp;
-
-        if (!p)
-            return E_OUTOFMEMORY;
-
-        p->AddRef();
-        HRESULT hr = p->QueryInterface(riid, ppv);
-        p->Release();
-        return hr;
-    }
-
-    STDMETHODIMP LockServer(BOOL bLock)
-    {
-        if (bLock)
-            SvcLock();
-        else
-            SvcUnlock();
-        return S_OK;
-    }
-};
-
-// TODO-Declare an instance of your class factory at global scope.
-CoCormanLispClassFactory g_classFactory;
-
-STDAPI DllGetClassObject(REFCLSID rclsid, REFIID riid, void**ppv)
-{
-    *ppv = 0;
-    if (rclsid == CLSID_CormanLisp)
-        return g_classFactory.QueryInterface(riid, ppv);
-    else
-        return CLASS_E_CLASSNOTAVAILABLE;
-}
-
-// for static linking
-__declspec(dllexport) HRESULT StaticGetClassObject(REFCLSID rclsid, REFIID riid, void**ppv)
-{
-    *ppv = 0;
-    if (rclsid == CLSID_CormanLisp)
-        return g_classFactory.QueryInterface(riid, ppv);
-    else
-        return CLASS_E_CLASSNOTAVAILABLE;
-}
-
-STDAPI DllCanUnloadNow()
-{
-    return g_cLocks ? S_FALSE : S_OK;
-}
-
-STDAPI DllUnregisterServer();
-
-STDAPI DllRegisterServer()
-{
-	if (*g_szFileName == 0)
-		strcpy_s(g_szFileName, sizeof(g_szFileName), "CormanLispServer.dll");
-    LONG r = ERROR_SUCCESS;
-    for (int i = 0; 
-         r == ERROR_SUCCESS && i < g_cRegKeyValues; 
-         i++)
-        r = RegSetValue(HKEY_CLASSES_ROOT,
-                        g_szRegKeyValues[i][0], 
-                        REG_SZ,
-                        g_szRegKeyValues[i][1],
-                        lstrlen(g_szRegKeyValues[i][1]));
-    if (r != ERROR_SUCCESS)
-        DllUnregisterServer();
-    return (r == ERROR_SUCCESS) ? S_OK : E_FAIL;
-}
-
-STDAPI DllUnregisterServer()
-{
-    HRESULT result = S_OK;
-    for (int i = g_cRegKeyValues - 1; i >= 0; i--)
-    {
-        LONG r = RegDeleteKey(HKEY_CLASSES_ROOT,
-                              g_szRegKeyValues[i][0]);
-        if (r != ERROR_SUCCESS)
-            result = S_FALSE;
-    }
-    return result;
 }
 
 extern "C" long Initialize(const wchar_t* imageName, int clientType, HINSTANCE appInstance,
@@ -354,7 +218,6 @@ UINT LispMainProc(LPVOID /*pParam*/)
 	ThreadRecord* th = 0;
 	DWORD currThreadID = 0;
 	currThreadID = osCurrentThreadId();
-	WSADATA wsd;
 
 	__asm	mov  dummy, ebp
 
@@ -371,7 +234,8 @@ UINT LispMainProc(LPVOID /*pParam*/)
 	osSetThreadSlotValue(Thread_Index, th);
 	osSetThreadSlotValue(QV_Index, th->QV_rec);
 	osThreadSlotValue(QV_Index);	// force NT to allocate the block
-	CoInitialize(0);
+	if (!osStartThreadServices())
+		osExitThread(0);
 
 	pushDynamicBinding(COMPILER_RUNTIME, NIL);
 
@@ -382,15 +246,9 @@ UINT LispMainProc(LPVOID /*pParam*/)
 	pushDynamicBinding(CURRENT_THREAD_HANDLE, fp);
 	fp = 0;
 
-	if (WSAStartup(MAKEWORD(2, 2), &wsd) != 0)
-		goto end;
-
 	lispmain();
 
-	WSACleanup();
-
-end:
-	CoUninitialize();
+	osStopThreadServices();
 	osExitThread(0);
 	return 0;
 }

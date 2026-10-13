@@ -83,6 +83,12 @@ extern void osCloseThread(OsThread thread);
 //	Ends the calling thread. Does not return.
 extern void osExitThread(unsigned code);
 
+//	To be called by a thread which is going to run Lisp, before it does,
+//	and again when it is done. If the first returns false the thread
+//	cannot run Lisp, and has nothing to stop.
+extern bool osStartThreadServices();
+extern void osStopThreadServices();
+
 extern unsigned long osCurrentThreadId();
 
 //	An OsThread for the calling thread, to be closed like any other.
