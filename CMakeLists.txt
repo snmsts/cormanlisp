@@ -21,6 +21,9 @@ endif()
 
 option(CORMANLISP_SYSTEM_ZLIB "Use an installed zlib instead of downloading the sources" OFF)
 option(CORMANLISP_BUILD_IMAGE "Build CormanLisp.img as part of the default target" ON)
+# The IDE needs the MFC component of the compiler.
+find_package(MFC QUIET)
+option(CORMANLISP_BUILD_IDE "Build the IDE, CormanLisp.exe (needs MFC)" ${MFC_FOUND})
 
 # The executables locate Sys/, Modules/ and the image relative to their own
 # directory, so they are placed at the top of the source tree.
@@ -203,6 +206,50 @@ target_compile_options(dlltemplate PRIVATE /Ob1 /GF /Gy)
 target_link_libraries(dlltemplate PRIVATE vcruntime ucrt)
 target_link_options(dlltemplate PRIVATE /ENTRY:DllMain /SUBSYSTEM:WINDOWS /MANIFEST:NO)
 cormanlisp_runtime_target(dlltemplate)
+
+#
+# The IDE: CormanLisp.exe, an MFC application.
+#
+if(CORMANLISP_BUILD_IDE)
+  if(NOT MFC_FOUND)
+    message(FATAL_ERROR
+      "CORMANLISP_BUILD_IDE is on but MFC was not found. Install the\n"
+      "\"C++ MFC for x86\" component of the build tools, or configure with\n"
+      "  -DCORMANLISP_BUILD_IDE=OFF")
+  endif()
+  set(_ide "${CMAKE_SOURCE_DIR}/CormanLispIDE")
+  add_executable(CormanLisp WIN32
+    "${_ide}/src/browser.cpp"
+    "${_ide}/src/CharBuf.cpp"
+    "${_ide}/src/CoCormanLispClient.cpp"
+    "${_ide}/src/CommonLispFuncs.cpp"
+    "${_ide}/src/CormanLisp.cpp"
+    "${_ide}/src/CSDialog.cpp"
+    "${_ide}/src/Dialogs.cpp"
+    "${_ide}/src/DocOptions.cpp"
+    "${_ide}/src/LispObjDisplay.cpp"
+    "${_ide}/src/oleaccproxy.cpp"
+    "${_ide}/src/PageSetupDlg.cpp"
+    "${_ide}/src/PreferencesDialog.cpp"
+    "${_ide}/src/SMDIChildWnd.cpp"
+    "${_ide}/src/SMDIFrameWnd.cpp"
+    "${_ide}/src/Stdafx.cpp"
+    "${_ide}/src/ThreadClasses.cpp"
+    "${_ide}/src/webbrowser.cpp"
+    "${_ide}/CormanLisp.rc"
+    "${_ide}/Version.rc")
+  # MFC in a shared DLL.
+  set_target_properties(CormanLisp PROPERTIES MFC_FLAG 2)
+  target_include_directories(CormanLisp PRIVATE
+    "${CMAKE_SOURCE_DIR}/include"
+    "${_ide}/include"
+    "${_ide}")
+  target_compile_definitions(CormanLisp PRIVATE _WINDOWS _AFXDLL)
+  target_link_libraries(CormanLisp PRIVATE CormanLispServer ole32)
+  # The manifest is a resource in CormanLisp.rc.
+  target_link_options(CormanLisp PRIVATE /MANIFEST:NO /NODEFAULTLIB:oleacc.lib)
+  cormanlisp_runtime_target(CormanLisp)
+endif()
 
 #
 # CormanLisp.img, built by the freshly built kernel from the sources in Sys/.

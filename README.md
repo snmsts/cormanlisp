@@ -20,9 +20,10 @@ v143):
     cmake -S . -B build -G "Visual Studio 17 2022" -A Win32
     cmake --build build --config Standard
 
-This places `clconsole.exe`, `CormanLispServer.dll`, the application
-stubs used by `SAVE-APPLICATION` and `CormanLisp.img` at the top of the
-source tree, next to `Sys/`, where they expect to find each other.
+This places `clconsole.exe`, `CormanLisp.exe` (the IDE),
+`CormanLispServer.dll`, the application stubs used by `SAVE-APPLICATION`
+and `CormanLisp.img` at the top of the source tree, next to `Sys/`, where
+they expect to find each other.
 `makeimg.bat` rebuilds only the image.
 
 The tests in `test/` are run with
@@ -39,8 +40,11 @@ zlib is not part of this repository. Its sources are downloaded when
 CMake configures the build; pass `-DCORMANLISP_SYSTEM_ZLIB=ON` to use an
 installed 32-bit zlib instead.
 
-The IDE (`CormanLispIDE`) and the installer are not part of the CMake
-build yet.
+The IDE is an MFC application. It is built when the "C++ MFC for x86"
+component of the compiler is installed, and left out otherwise;
+`-DCORMANLISP_BUILD_IDE=ON` or `OFF` overrides that.
+
+The installer is not part of the CMake build yet.
 
 ### Libraries needed at run time
 
