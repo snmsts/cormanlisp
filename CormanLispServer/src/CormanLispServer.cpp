@@ -782,12 +782,17 @@ void AbortLispThread()
 
 static CONTEXT terminateContext;
 
+static void ThrowExitThread(LispObj result)
+{
+	LispCall4(Funcall, THROW_EXCEPTION, EXIT_THREAD_TAG, result, wrapInteger(1));
+}
+
+//	A thread which is being terminated is made to resume here, with the
+//	value to return in edi.
 void __declspec(naked) TerminateLispThreadException()
 {
-	LispObj result;
-	__asm mov result, edi
-
-	LispCall4(Funcall, THROW_EXCEPTION, EXIT_THREAD_TAG, result, wrapInteger(1));
+	__asm push edi
+	__asm call ThrowExitThread
 }
 
 void TerminateLispThread(LispObj threadID, LispObj ret)

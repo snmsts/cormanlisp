@@ -24,6 +24,37 @@
 #define both_fixnums(a,b)		((((a) | (b)) & 7) == 0)
 #define both_shortFloats(a,b)   ((((a) & (b)) & 3) == 3)
 
+//
+//	Fixnum arithmetic on tagged values. These return false, and leave
+//	the result alone, if the operation overflows.
+//
+static bool addFixnums(LispObj n1, LispObj n2, LispObj* result)
+{
+	long long wide = (long long)(long)n1 + (long)n2;
+	if (wide != (long)wide)
+		return false;
+	*result = (LispObj)(long)wide;
+	return true;
+}
+
+static bool subtractFixnums(LispObj n1, LispObj n2, LispObj* result)
+{
+	long long wide = (long long)(long)n1 - (long)n2;
+	if (wide != (long)wide)
+		return false;
+	*result = (LispObj)(long)wide;
+	return true;
+}
+
+static bool multiplyFixnums(LispObj n1, LispObj n2, LispObj* result)
+{
+	long long wide = (long long)(long)(n1 >> 3) * (long)n2;
+	if (wide != (long)wide)
+		return false;
+	*result = (LispObj)(long)wide;
+	return true;
+}
+
 static LispObj bignumAdd(LispObj, LispObj);
 static LispObj addRatios(LispObj, LispObj);
 static LispObj bignumSubtract(LispObj, LispObj);
@@ -612,9 +643,8 @@ LispObj _Add(LispObj n1, LispObj n2)
 	if (both_fixnums(n1, n2))
 	{
 		// attempt fixnum add
-		__asm mov eax, dword ptr n2
-		__asm add dword ptr result, eax
-		__asm jo do_bignum
+		if (!addFixnums(result, n2, &result))
+			goto do_bignum;
 		return result;
 	}
 
@@ -855,9 +885,8 @@ LispObj subtractFixnums(LispObj n1, LispObj n2)
 {
 	// attempt fixnum subtract
 	LispObj result = n1;
-	__asm mov eax, dword ptr n2
-	__asm sub dword ptr result, eax
-	__asm jo do_bignum
+	if (!subtractFixnums(result, n2, &result))
+		goto do_bignum;
 	return result;
 do_bignum:
 	n1 = promoteNumber(n1, FixnumID, BignumID);
@@ -927,9 +956,8 @@ LispObj _Subtract(LispObj n1, LispObj n2)
 	if (both_fixnums(n1, n2))
 	{
 		// attempt fixnum subtract
-		__asm mov eax, dword ptr n2
-		__asm sub dword ptr result, eax
-		__asm jo do_bignum
+		if (!subtractFixnums(result, n2, &result))
+			goto do_bignum;
 		return result;
 	do_bignum:
 		return bignumSubtract(fixnumToBignum(n1), fixnumToBignum(n2));
@@ -965,9 +993,8 @@ LispObj _Subtract(LispObj n1, LispObj n2)
 	if (both_fixnums(n1, n2))
 	{
 		// attempt fixnum subtract
-		__asm mov eax, dword ptr n2
-		__asm sub dword ptr result, eax
-		__asm jo do_bignum
+		if (!subtractFixnums(result, n2, &result))
+			goto do_bignum;
 		return result;
 	}
 
@@ -1063,11 +1090,8 @@ LispObj _Multiply(LispObj n1, LispObj n2)
 	if (both_fixnums(n1, n2))
 	{
 		// attempt fixnum multiply
-		__asm mov eax, dword ptr n1
-		__asm shr eax, 3
-		__asm imul dword ptr n2
-		__asm jo do_bignum
-		__asm mov [result], eax
+		if (!multiplyFixnums(n1, n2, &result))
+			goto do_bignum;
 
 		return result;
 	}
@@ -2088,14 +2112,14 @@ mulBignumWords(LispObj b1, long b1Len, LispObj b2, long b2Len, LispObj result)
 			adc		edx, 0						; edx:eax = b1[j]*b2[i]+overflow
 			mov		[esp + 4], edx
 			add		eax, [esp + 8]				; add previous carry
-			mov		[esp + 8], 0
+			mov		dword ptr [esp + 8], 0
 			jnc		t3
-			inc		[esp + 8]
+			inc		dword ptr [esp + 8]
 		t3: mov		edi, i
 			add		edi, ecx
 			add		[ebx + edi + 3], eax
 			jnc		t2
-			inc		[esp + 8]
+			inc		dword ptr [esp + 8]
 		t2:
 			add		ecx, 4
 		end_test:

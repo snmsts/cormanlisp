@@ -980,7 +980,7 @@ throwOSException()
 
 	__asm mov exceptionCode, eax
 
-	switch (exceptionCode)
+	switch ((DWORD)exceptionCode)
 	{
 	case EXCEPTION_ACCESS_VIOLATION:			ex = EX_ACCESS_VIOLATION;			break;
 	case EXCEPTION_ARRAY_BOUNDS_EXCEEDED:		ex = EX_ARRAY_BOUNDS_EXCEEDED;		break;
@@ -1208,7 +1208,7 @@ LispCall0(LispFunc func)
 {
 	SETUP_LISP_CALL(0);
 
-	__asm	call	dword ptr [func]
+	__asm	call	dword ptr [ebp + 8]
 
 	END_LISP_CALL();
 }
@@ -1218,9 +1218,9 @@ LispCall1(LispFunc func, LispObj a1)
 {
 	SETUP_LISP_CALL(1);
 
-	__asm	mov		eax, dword ptr [a1]
+	__asm	mov		eax, dword ptr [ebp + 12]
 	__asm	push	eax
-	__asm	call	dword ptr [func]
+	__asm	call	dword ptr [ebp + 8]
 	__asm	add		esp, 4
 
 	END_LISP_CALL();
@@ -1231,11 +1231,11 @@ LispCall2(LispFunc func, LispObj a1, LispObj a2)
 {
 	SETUP_LISP_CALL(2);
 
-	__asm	mov		eax, dword ptr [a1]
+	__asm	mov		eax, dword ptr [ebp + 12]
 	__asm	push	eax
-	__asm	mov		eax, dword ptr [a2]
+	__asm	mov		eax, dword ptr [ebp + 16]
 	__asm	push	eax
-	__asm	call	dword ptr [func]
+	__asm	call	dword ptr [ebp + 8]
 	__asm	add		esp, 8
 
 	END_LISP_CALL();
@@ -1246,13 +1246,13 @@ LispCall3(LispFunc func, LispObj a1, LispObj a2, LispObj a3)
 {
 	SETUP_LISP_CALL(3);
 
-	__asm	mov		eax, dword ptr [a1]
+	__asm	mov		eax, dword ptr [ebp + 12]
 	__asm	push	eax
-	__asm	mov		eax, dword ptr [a2]
+	__asm	mov		eax, dword ptr [ebp + 16]
 	__asm	push	eax
-	__asm	mov		eax, dword ptr [a3]
+	__asm	mov		eax, dword ptr [ebp + 20]
 	__asm	push	eax
-	__asm	call	dword ptr [func]
+	__asm	call	dword ptr [ebp + 8]
 	__asm	add		esp, 12
 
 	END_LISP_CALL();
@@ -1263,15 +1263,15 @@ LispCall4(LispFunc func, LispObj a1, LispObj a2, LispObj a3, LispObj a4)
 {
 	SETUP_LISP_CALL(4);
 
-	__asm	mov		eax, dword ptr [a1]
+	__asm	mov		eax, dword ptr [ebp + 12]
 	__asm	push	eax
-	__asm	mov		eax, dword ptr [a2]
+	__asm	mov		eax, dword ptr [ebp + 16]
 	__asm	push	eax
-	__asm	mov		eax, dword ptr [a3]
+	__asm	mov		eax, dword ptr [ebp + 20]
 	__asm	push	eax
-	__asm	mov		eax, dword ptr [a4]
+	__asm	mov		eax, dword ptr [ebp + 24]
 	__asm	push	eax
-	__asm	call	dword ptr [func]
+	__asm	call	dword ptr [ebp + 8]
 	__asm	add		esp, 16
 
 	END_LISP_CALL();
@@ -1282,17 +1282,17 @@ LispCall5(LispFunc func, LispObj a1, LispObj a2, LispObj a3, LispObj a4, LispObj
 {
 	SETUP_LISP_CALL(5);
 
-	__asm	mov		eax, dword ptr [a1]
+	__asm	mov		eax, dword ptr [ebp + 12]
 	__asm	push	eax
-	__asm	mov		eax, dword ptr [a2]
+	__asm	mov		eax, dword ptr [ebp + 16]
 	__asm	push	eax
-	__asm	mov		eax, dword ptr [a3]
+	__asm	mov		eax, dword ptr [ebp + 20]
 	__asm	push	eax
-	__asm	mov		eax, dword ptr [a4]
+	__asm	mov		eax, dword ptr [ebp + 24]
 	__asm	push	eax
-	__asm	mov		eax, dword ptr [a5]
+	__asm	mov		eax, dword ptr [ebp + 28]
 	__asm	push	eax
-	__asm	call	dword ptr [func]
+	__asm	call	dword ptr [ebp + 8]
 	__asm	add		esp, 20
 
 	END_LISP_CALL();
@@ -1303,19 +1303,19 @@ LispCall6(LispFunc func, LispObj a1, LispObj a2, LispObj a3, LispObj a4, LispObj
 {
 	SETUP_LISP_CALL(6);
 
-	__asm	mov		eax, dword ptr [a1]
+	__asm	mov		eax, dword ptr [ebp + 12]
 	__asm	push	eax
-	__asm	mov		eax, dword ptr [a2]
+	__asm	mov		eax, dword ptr [ebp + 16]
 	__asm	push	eax
-	__asm	mov		eax, dword ptr [a3]
+	__asm	mov		eax, dword ptr [ebp + 20]
 	__asm	push	eax
-	__asm	mov		eax, dword ptr [a4]
+	__asm	mov		eax, dword ptr [ebp + 24]
 	__asm	push	eax
-	__asm	mov		eax, dword ptr [a5]
+	__asm	mov		eax, dword ptr [ebp + 28]
 	__asm	push	eax
-	__asm	mov		eax, dword ptr [a6]
+	__asm	mov		eax, dword ptr [ebp + 32]
 	__asm	push	eax
-	__asm	call	dword ptr [func]
+	__asm	call	dword ptr [ebp + 8]
 	__asm	add		esp, 24
 
 	END_LISP_CALL();
@@ -1326,21 +1326,21 @@ LispCall7(LispFunc func, LispObj a1, LispObj a2, LispObj a3, LispObj a4, LispObj
 {
 	SETUP_LISP_CALL(7);
 
-	__asm	mov		eax, dword ptr [a1]
+	__asm	mov		eax, dword ptr [ebp + 12]
 	__asm	push	eax
-	__asm	mov		eax, dword ptr [a2]
+	__asm	mov		eax, dword ptr [ebp + 16]
 	__asm	push	eax
-	__asm	mov		eax, dword ptr [a3]
+	__asm	mov		eax, dword ptr [ebp + 20]
 	__asm	push	eax
-	__asm	mov		eax, dword ptr [a4]
+	__asm	mov		eax, dword ptr [ebp + 24]
 	__asm	push	eax
-	__asm	mov		eax, dword ptr [a5]
+	__asm	mov		eax, dword ptr [ebp + 28]
 	__asm	push	eax
-	__asm	mov		eax, dword ptr [a6]
+	__asm	mov		eax, dword ptr [ebp + 32]
 	__asm	push	eax
-	__asm	mov		eax, dword ptr [a7]
+	__asm	mov		eax, dword ptr [ebp + 36]
 	__asm	push	eax
-	__asm	call	dword ptr [func]
+	__asm	call	dword ptr [ebp + 8]
 	__asm	add		esp, 28
 
 	END_LISP_CALL();
@@ -1352,23 +1352,23 @@ LispCall8(LispFunc func, LispObj a1, LispObj a2, LispObj a3, LispObj a4,
 {
 	SETUP_LISP_CALL(8);
 
-	__asm	mov		eax, dword ptr [a1]
+	__asm	mov		eax, dword ptr [ebp + 12]
 	__asm	push	eax
-	__asm	mov		eax, dword ptr [a2]
+	__asm	mov		eax, dword ptr [ebp + 16]
 	__asm	push	eax
-	__asm	mov		eax, dword ptr [a3]
+	__asm	mov		eax, dword ptr [ebp + 20]
 	__asm	push	eax
-	__asm	mov		eax, dword ptr [a4]
+	__asm	mov		eax, dword ptr [ebp + 24]
 	__asm	push	eax
-	__asm	mov		eax, dword ptr [a5]
+	__asm	mov		eax, dword ptr [ebp + 28]
 	__asm	push	eax
-	__asm	mov		eax, dword ptr [a6]
+	__asm	mov		eax, dword ptr [ebp + 32]
 	__asm	push	eax
-	__asm	mov		eax, dword ptr [a7]
+	__asm	mov		eax, dword ptr [ebp + 36]
 	__asm	push	eax
-	__asm	mov		eax, dword ptr [a8]
+	__asm	mov		eax, dword ptr [ebp + 40]
 	__asm	push	eax
-	__asm	call	dword ptr [func]
+	__asm	call	dword ptr [ebp + 8]
 	__asm	add		esp, 32
 
 	END_LISP_CALL();
@@ -1585,9 +1585,9 @@ __declspec(naked) LispObj cons(LispObj a, LispObj b)
 		call	ThreadQV
 		mov		esi, eax
 		call	AllocLocalCons
-		mov		ecx, dword ptr a
+		mov		ecx, dword ptr [ebp + 8]
 		mov		dword ptr [eax - 4], ecx	;; CAR(ret) = a
-		mov		ecx, dword ptr b
+		mov		ecx, dword ptr [ebp + 12]
 		mov		dword ptr [eax], ecx		;; CDR(ret) = b
 		pop		esi
 		pop		ebp

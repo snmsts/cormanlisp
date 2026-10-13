@@ -3491,7 +3491,7 @@ void __declspec(naked) Load_QV_Reg()
 {
 	__asm	push	ebp
 	__asm	mov		ebp, esp
-	TlsGetValue(QV_Index);
+	__asm	call	ThreadQV
 	__asm	mov		esi, eax
 	__asm	pop		ebp
 	__asm	ret

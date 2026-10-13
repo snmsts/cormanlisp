@@ -589,6 +589,11 @@ int LispHeap::grow(long bytesToGrow)
 //	Allocates a 2-cell block
 //
 
+//	Inline assembly calls these through a pointer: the name of an imported
+//	function does not mean the same thing to every compiler there.
+static void (WINAPI * const enterCriticalSection)(LPCRITICAL_SECTION) = EnterCriticalSection;
+static void (WINAPI * const leaveCriticalSection)(LPCRITICAL_SECTION) = LeaveCriticalSection;
+
 __declspec(naked) void EnterGCCriticalSection()
 {
     __asm
@@ -607,7 +612,7 @@ __declspec(naked) void EnterGCCriticalSection()
 		push	4	;; push argument length (bytes)
 		lea		eax, dword ptr GCCriticalSection.m_sect
 		push	eax
-		call	dword ptr EnterCriticalSection
+		call	dword ptr enterCriticalSection
 		add		esp, 4	;; pop argument length
 	}
 
@@ -639,7 +644,7 @@ __declspec(naked) void LeaveGCCriticalSection()
 		push	4	;; push argument length (bytes)
 		lea		eax, dword ptr GCCriticalSection.m_sect
 		push	eax
-		call	dword ptr LeaveCriticalSection
+		call	dword ptr leaveCriticalSection
 		add		esp, 4	;; pop argument length
 	}
 
@@ -690,7 +695,7 @@ __declspec(naked) void EnterGCCriticalSection()
 		push	4	;; push argument length (bytes)
         lea		eax, dword ptr GCCriticalSection.m_sect
         push	eax
-        call	dword ptr EnterCriticalSection
+        call	dword ptr enterCriticalSection
 		add		esp, 4	;; pop argument length
 
         ;; pop foreign stack context
@@ -734,7 +739,7 @@ __declspec(naked) void LeaveGCCriticalSection()
  		push	4	;; push argument length (bytes)
         lea		eax, dword ptr GCCriticalSection.m_sect
         push	eax
-        call	dword ptr LeaveCriticalSection
+        call	dword ptr leaveCriticalSection
 		add		esp, 4	;; pop argument length
 
         ;; pop foreign stack context
@@ -793,7 +798,7 @@ __declspec(naked) LispObj AllocVector(long num)
         push	ebx
         call	ThreadQV
         mov		esi, eax		;; set up esi
-        mov		edx, dword ptr num
+        mov		edx, dword ptr [ebp + 8]	;; edx = num
         cmp		edx, 8000h		;; num < 32k cells?
         jb		t1
         shl     edx, 3          ;; pass tagged size
@@ -867,7 +872,7 @@ __declspec(naked) LispObj LispAllocVector(long num)
         push	edi
         push	esi
         push	ebx
-        mov		edx, dword ptr num
+        mov		edx, dword ptr [ebp + 8]	;; edx = num
         cmp		edx, 8000h		;; num < 32k cells?
         jb		t1
         push	edx				;; num >= 32k cells, alloc from primary heap
@@ -941,7 +946,7 @@ __declspec(naked) LispObj LispAllocVectorTagged(LispObj num)
         push	edi
         push	esi
         push	ebx
-        mov		edx, dword ptr num
+        mov		edx, dword ptr [ebp + 8]	;; edx = num
         cmp		edx, 40000h		;; num < 32k (tagged) cells?
         jb		t1
         push	edx				;; num >= 32k cells, alloc from primary heap
