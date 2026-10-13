@@ -1141,10 +1141,106 @@
     })
 
 ;;
+;; These take a floating point value which a foreign function has left
+;; in the floating point register and return it as a lisp float.
+;; The value must not stay in the floating point register while the
+;; node is allocated: it does not survive a garbage collection there.
+;; It is kept on the stack as 16-bit pieces, which look like fixnums
+;; to the garbage collector.
+;;
+(defasm box-foreign-double-float ()
+    {
+        push    ebp
+        mov     ebp, esp
+        sub     esp, 8
+        fstp    [esp]
+    begin-atomic
+        pop     eax                 ;; low dword
+        pop     edx                 ;; high dword
+        mov     ecx, edx
+        shr     ecx, 16
+        shl     ecx, 3
+        push    ecx                 ;; [ebp - 4]
+        and     edx, #xffff
+        shl     edx, 3
+        push    edx                 ;; [ebp - 8]
+        mov     ecx, eax
+        shr     ecx, 16
+        shl     ecx, 3
+        push    ecx                 ;; [ebp - 12]
+        and     eax, #xffff
+        shl     eax, 3
+        push    eax                 ;; [ebp - 16]
+    end-atomic
+        ;; the kernel func expects these 8 bytes of 0 to be passed,
+        ;; but our replacement code in math-ops.lisp will not need this
+        push    0
+        push    0
+        callp   cl::%double-float-node
+        add     esp, 8
+    begin-atomic
+        mov     edx, [ebp - 4]
+        shl     edx, 13
+        mov     ecx, [ebp - 8]
+        shr     ecx, 3
+        or      edx, ecx
+        mov     [eax + (uvector-offset (+ cl::double-float-offset 1))], edx
+        mov     edx, [ebp - 12]
+        shl     edx, 13
+        mov     ecx, [ebp - 16]
+        shr     ecx, 3
+        or      edx, ecx
+        mov     [eax + (uvector-offset cl::double-float-offset)], edx
+        xor     edx, edx
+        mov     ecx, 1
+    end-atomic
+        mov     esp, ebp
+        pop     ebp
+        ret
+    })
+
+(defasm box-foreign-single-float ()
+    {
+        push    ebp
+        mov     ebp, esp
+        sub     esp, 4
+        fstp.single [esp]
+    begin-atomic
+        pop     eax
+        mov     ecx, eax
+        shr     ecx, 16
+        shl     ecx, 3
+        push    ecx                 ;; [ebp - 4]
+        and     eax, #xffff
+        shl     eax, 3
+        push    eax                 ;; [ebp - 8]
+    end-atomic
+        ;; the kernel func expects these 8 bytes of 0 to be passed,
+        ;; but our replacement code in math-ops.lisp will not need this
+        push    0
+        push    0
+        callp   cl::%single-float-node
+        add     esp, 8
+    begin-atomic
+        mov     edx, [ebp - 4]
+        shl     edx, 13
+        mov     ecx, [ebp - 8]
+        shr     ecx, 3
+        or      edx, ecx
+        mov     [eax + (uvector-offset cl::single-float-offset)], edx
+        xor     edx, edx
+        mov     ecx, 1
+    end-atomic
+        mov     esp, ebp
+        pop     ebp
+        ret
+    })
+
+;;
 ;; This stores the untagged returned value in eax in the foreign args
 ;; frame (topmost cell).
-;; In the case of floating point, we leave it in the floating point
-;; register because it isn't going to trip up the garbage collector.
+;; In the case of floating point, it stays in the floating point
+;; register until WRAP-FOREIGN-RETURN-VALUE.
 ;;
 (defcodegen copy-return-value (form dest)
 	(declare (ignore dest))
@@ -1292,25 +1388,13 @@
 			((eq type :double-float)
 			 (parse-assembler
 				{
-                    ;; the kernel func expects these 8 bytes of 0 to be passed,
-                    ;; but our replacement code in math-ops.lisp will not need this
-					push	0
-					push	0
-					callp	cl::%double-float-node
-					add		esp, 8
-					fstp	[eax + (uvector-offset cl::double-float-offset)]
+					callp	x86::box-foreign-double-float
 					mov		ecx, 1
 				}))
 			((eq type :single-float)
 			 (parse-assembler
 				{
-                    ;; the kernel func expects these 8 bytes of 0 to be passed,
-                    ;; but our replacement code in math-ops.lisp will not need this
-					push	0
-					push	0
-					callp	cl::%single-float-node
-					add		esp, 8
-					fstp.single	[eax + (uvector-offset cl::single-float-offset)]
+					callp	x86::box-foreign-single-float
 					mov		ecx, 1
 				}))
 
