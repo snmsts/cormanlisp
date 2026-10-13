@@ -69,6 +69,54 @@ extern void __stdcall osEnterLock(OsLock* lock);
 extern void __stdcall osLeaveLock(OsLock* lock);
 
 //
+//	Threads
+//
+typedef void* OsThread;
+typedef unsigned (__stdcall* OsThreadProc)(void* argument);
+
+//	The new thread does not run until osResumeThread() is called for it.
+//	Returns 0 on failure. Whoever is done with the OsThread closes it;
+//	that does not end the thread.
+extern OsThread osCreateThread(OsThreadProc proc, void* argument, unsigned long* id);
+extern void osCloseThread(OsThread thread);
+
+//	Ends the calling thread. Does not return.
+extern void osExitThread(unsigned code);
+
+extern unsigned long osCurrentThreadId();
+
+//	An OsThread for the calling thread, to be closed like any other.
+extern OsThread osOpenCurrentThread();
+
+//	The address just past the calling thread's stack: the stack grows down
+//	from there.
+extern void* osStackTop();
+
+//	Stops another thread wherever it happens to be, and lets it go on.
+//	A thread suspended twice has to be resumed twice.
+extern bool osSuspendThread(OsThread thread);
+extern void osResumeThread(OsThread thread);
+
+//	The registers of a thread which is suspended. Setting them changes
+//	where and with what the thread goes on when it is resumed.
+struct OsRegisters
+{
+	unsigned long eax;
+	unsigned long ebx;
+	unsigned long ecx;
+	unsigned long edx;
+	unsigned long esi;
+	unsigned long edi;
+	unsigned long ebp;
+	unsigned long esp;
+	unsigned long eip;
+	unsigned long eflags;
+};
+
+extern bool osGetThreadRegisters(OsThread thread, OsRegisters* registers);
+extern bool osSetThreadRegisters(OsThread thread, const OsRegisters* registers);
+
+//
 //	Time
 //
 

@@ -2386,7 +2386,7 @@ LispFunction(Throw_Exception)
 				MB_OK|MB_SETFOREGROUND);
 			if (CormanLispServer)
 				CormanLispServer->SetMessage("Corman Lisp has stopped.");
-			ExitThread((unsigned long)-1);
+			osExitThread((unsigned)-1);
 		}
 		else
 			Error("No catch block was found to match the throw tag: ~A", tag);

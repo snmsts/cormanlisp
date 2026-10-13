@@ -1353,7 +1353,7 @@ void garbageCollect(long level)
             GarbageCollectionLevel = level;
 
             if (GCFailure)
-                _endthreadex(1);
+                osExitThread(1);
 
             if (symbolValue(HEAP_CHECKING) != NIL)
                 verifyHeapBlocks();
@@ -1805,7 +1805,7 @@ static void updateReturnAddress(unsigned long* addr)
 static void
 promoteThreadExecutingFunctions(ThreadRecord* th)
 {
-    static CONTEXT lispContext;
+    static OsRegisters lispContext;
     LispObj* start = th->stackStart;
     unsigned long* basePointer = 0;
     unsigned long* esp = 0;
@@ -1824,11 +1824,10 @@ promoteThreadExecutingFunctions(ThreadRecord* th)
     // Every even segment should be a lisp (tagged) segment,
     index = qv[STACK_MARKER_INDEX_Index] >> 2;
 
-    lispContext.ContextFlags = CONTEXT_CONTROL;
-    GetThreadContext(th->thread, &lispContext);
-    basePointer = (unsigned long*)lispContext.Ebp;
-    esp = (unsigned long*)lispContext.Esp;
-    updateReturnAddress((unsigned long*)&(lispContext.Eip));
+    osGetThreadRegisters(th->thread, &lispContext);
+    basePointer = (unsigned long*)lispContext.ebp;
+    esp = (unsigned long*)lispContext.esp;
+    updateReturnAddress((unsigned long*)&(lispContext.eip));
     while (index > 0 &&
             ((unsigned long)esp) > qv[STACK_MARKERS_Index + ((index - 1) * 2)])
         index--;
@@ -1903,8 +1902,7 @@ promoteThreadExecutingFunctions(ThreadRecord* th)
         }
         runtimeInfo = CDR(runtimeInfo);
     }
-    lispContext.ContextFlags = CONTEXT_CONTROL;
-    SetThreadContext(th->thread, &lispContext);
+    osSetThreadRegisters(th->thread, &lispContext);
 }
 
 //
@@ -2148,15 +2146,14 @@ static bool isObjectStart(LispObj n)
 static void
 checkThreadStackRoots(ThreadRecord* th, LispHeap* /*fromSpace*/, LispHeap* toSpace)
 {
-    static CONTEXT lispContext;
+    static OsRegisters lispContext;
     LispObj* start = th->stackStart;
     LispObj* x = 0;
     LispObj regs[6] = {0};
     int i = 0;
 
-    lispContext.ContextFlags = CONTEXT_FULL;
-    GetThreadContext(th->thread, &lispContext);
-    LispObj* end = (LispObj*)lispContext.Esp;
+    osGetThreadRegisters(th->thread, &lispContext);
+    LispObj* end = (LispObj*)lispContext.esp;
     LispObj* qv = th->QV_rec;
     int index = 0;
 
@@ -2204,26 +2201,25 @@ checkThreadStackRoots(ThreadRecord* th, LispHeap* /*fromSpace*/, LispHeap* toSpa
     if (EVEN(i))
     {
         // check registers
-        regs[0] = (LispObj)lispContext.Eax;
-        regs[1] = (LispObj)lispContext.Ebx;
-        regs[2] = (LispObj)lispContext.Ecx;
-        regs[3] = (LispObj)lispContext.Edx;
-        regs[4] = (LispObj)lispContext.Esi;
-        regs[5] = (LispObj)lispContext.Edi;
+        regs[0] = (LispObj)lispContext.eax;
+        regs[1] = (LispObj)lispContext.ebx;
+        regs[2] = (LispObj)lispContext.ecx;
+        regs[3] = (LispObj)lispContext.edx;
+        regs[4] = (LispObj)lispContext.esi;
+        regs[5] = (LispObj)lispContext.edi;
         for (i = 0; i < 6; i++)
         {
             if (isStackRoot(regs[i]))
                 promoteBlock(&regs[i], toSpace);
         }
-        lispContext.Eax = (DWORD)regs[0];
-        lispContext.Ebx = (DWORD)regs[1];
-        lispContext.Ecx = (DWORD)regs[2];
-        lispContext.Edx = (DWORD)regs[3];
-        lispContext.Esi = (DWORD)regs[4];
-        lispContext.Edi = (DWORD)regs[5];
+        lispContext.eax = (DWORD)regs[0];
+        lispContext.ebx = (DWORD)regs[1];
+        lispContext.ecx = (DWORD)regs[2];
+        lispContext.edx = (DWORD)regs[3];
+        lispContext.esi = (DWORD)regs[4];
+        lispContext.edi = (DWORD)regs[5];
 
-        lispContext.ContextFlags = CONTEXT_FULL;
-        SetThreadContext(th->thread, &lispContext);
+        osSetThreadRegisters(th->thread, &lispContext);
     }
 }
 

@@ -339,39 +339,38 @@ static char* getTime()
 
 void writeThreadRegistersReport(FILE* file, ThreadRecord* th)
 {
-    static CONTEXT lispContext;
-    lispContext.ContextFlags = CONTEXT_CONTROL|CONTEXT_INTEGER;
-    GetThreadContext(th->thread, &lispContext);
+    static OsRegisters lispContext;
+    osGetThreadRegisters(th->thread, &lispContext);
 
     fprintf(file, "Thread ID %08.8x Registers:\n", th->threadID);
 
-    fprintf(file, "  EAX: %08.8x\n", lispContext.Eax); 
-    outputReferencedObject(file, lispContext.Eax, 4);
+    fprintf(file, "  EAX: %08.8x\n", lispContext.eax); 
+    outputReferencedObject(file, lispContext.eax, 4);
     fprintf(file, "\n");
 
-    fprintf(file, "  EBX: %08.8x\n", lispContext.Ebx); 
-    outputReferencedObject(file, lispContext.Ebx, 4);
+    fprintf(file, "  EBX: %08.8x\n", lispContext.ebx); 
+    outputReferencedObject(file, lispContext.ebx, 4);
     fprintf(file, "\n");
 
-    fprintf(file, "  ECX: %08.8x\n", lispContext.Ecx); 
-    outputReferencedObject(file, lispContext.Ecx, 4);
+    fprintf(file, "  ECX: %08.8x\n", lispContext.ecx); 
+    outputReferencedObject(file, lispContext.ecx, 4);
     fprintf(file, "\n");
 
-    fprintf(file, "  EDX: %08.8x\n", lispContext.Edx); 
-    outputReferencedObject(file, lispContext.Edx, 4);
+    fprintf(file, "  EDX: %08.8x\n", lispContext.edx); 
+    outputReferencedObject(file, lispContext.edx, 4);
     fprintf(file, "\n");
 
-    fprintf(file, "  ESI: %08.8x\n", lispContext.Esi); 
-    outputReferencedObject(file, lispContext.Esi, 4);
+    fprintf(file, "  ESI: %08.8x\n", lispContext.esi); 
+    outputReferencedObject(file, lispContext.esi, 4);
     fprintf(file, "\n");
 
-    fprintf(file, "  EDI: %08.8x\n", lispContext.Edi); 
-    outputReferencedObject(file, lispContext.Edi, 4);
+    fprintf(file, "  EDI: %08.8x\n", lispContext.edi); 
+    outputReferencedObject(file, lispContext.edi, 4);
     fprintf(file, "\n");
 
-    fprintf(file, "  ESP: %08.8x\n", lispContext.Esp); 
-    fprintf(file, "  EBP: %08.8x\n", lispContext.Ebp); 
-    fprintf(file, "  EIP: %08.8x\n", lispContext.Eip); 
+    fprintf(file, "  ESP: %08.8x\n", lispContext.esp); 
+    fprintf(file, "  EBP: %08.8x\n", lispContext.ebp); 
+    fprintf(file, "  EIP: %08.8x\n", lispContext.eip); 
     fprintf(file, "\n");
 }
 
@@ -380,7 +379,7 @@ struct StackCell { DWORD value; DWORD returnAddress; DWORD ebp; DWORD flags; };
 
 void processStack(StackCell* stack, DWORD stackLength, ThreadRecord* th)
 {
-    static CONTEXT lispContext;
+    static OsRegisters lispContext;
     LispObj* start = th->stackStart;
     unsigned long* basePointer = 0;
     unsigned long* esp = 0;
@@ -398,11 +397,10 @@ void processStack(StackCell* stack, DWORD stackLength, ThreadRecord* th)
     // Every even segment should be a lisp (tagged) segment,
     index = qv[STACK_MARKER_INDEX_Index] >> 2;
 
-    lispContext.ContextFlags = CONTEXT_CONTROL|CONTEXT_INTEGER;
-    GetThreadContext(th->thread, &lispContext);
-    basePointer = (unsigned long*)lispContext.Ebp;
-    esp = (unsigned long*)lispContext.Esp;
-    end = (LispObj*)lispContext.Esp;
+    osGetThreadRegisters(th->thread, &lispContext);
+    basePointer = (unsigned long*)lispContext.ebp;
+    esp = (unsigned long*)lispContext.esp;
+    end = (LispObj*)lispContext.esp;
 
     while (index > 0 &&
             ((unsigned long)esp) > qv[STACK_MARKERS_Index + ((index - 1) * 2)])
@@ -622,15 +620,14 @@ void writeThreadSummary(FILE* file, ThreadRecord* th)
 {
     StackCell* stack = 0;	// copy of the stack
     DWORD stackLength = 0;
-    static CONTEXT lispContext;
-    lispContext.ContextFlags = CONTEXT_CONTROL|CONTEXT_INTEGER;
-    GetThreadContext(th->thread, &lispContext);
+    static OsRegisters lispContext;
+    osGetThreadRegisters(th->thread, &lispContext);
     char* msg;
     if (th->stackStart == 0)
         msg = "Not started";
-    unsigned long* basePointer = (unsigned long*)lispContext.Ebp;
+    unsigned long* basePointer = (unsigned long*)lispContext.ebp;
     LispObj* start = th->stackStart;
-    LispObj* end = (LispObj*)lispContext.Esp;
+    LispObj* end = (LispObj*)lispContext.esp;
     LispObj* qv = th->QV_rec;
 
     // make a copy of the stack
@@ -720,7 +717,7 @@ void writeThreadSummary(FILE* file, ThreadRecord* th)
 
 void writeThreadStackReport(FILE* file, ThreadRecord* th)
 {
-    static CONTEXT lispContext;
+    static OsRegisters lispContext;
     LispObj* start = th->stackStart;
     LispObj* x = 0;
     StackCell* stack = 0;	// copy of the stack
@@ -732,9 +729,8 @@ void writeThreadStackReport(FILE* file, ThreadRecord* th)
         return;			// watch for the case where a thread has not actually started
     }
     int i = 0;
-    lispContext.ContextFlags = CONTEXT_CONTROL|CONTEXT_INTEGER;
-    GetThreadContext(th->thread, &lispContext);
-    LispObj* end = (LispObj*)lispContext.Esp;
+    osGetThreadRegisters(th->thread, &lispContext);
+    LispObj* end = (LispObj*)lispContext.esp;
     LispObj* qv = th->QV_rec;
     int index = 0;
 
@@ -1207,11 +1203,12 @@ static struct MemReportParams
     BOOL completed;
 } memReportParams;
 
-void WriteMemoryReport(void* param)
+static unsigned __stdcall WriteMemoryReport(void* param)
 {
     MemReportParams* memReportParams = (MemReportParams*)param;
     writeMemoryReport(memReportParams->address, memReportParams->context);
     memReportParams->completed = TRUE;
+    return 0;
 }
 
 void WriteMemoryReportTask(void* address, CONTEXT* context)
@@ -1219,7 +1216,10 @@ void WriteMemoryReportTask(void* address, CONTEXT* context)
     memReportParams.address = address;
     memReportParams.context = context;
     memReportParams.completed = FALSE;
-    _beginthread(WriteMemoryReport, 0, &memReportParams);
+    unsigned long id = 0;
+    OsThread thread = osCreateThread(WriteMemoryReport, &memReportParams, &id);
+    osResumeThread(thread);
+    osCloseThread(thread);
     while (!memReportParams.completed)
     {
         osSleep(500);     // wait for .5 seconds before polling again

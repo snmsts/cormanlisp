@@ -9,6 +9,7 @@
 
 #include "stdafx.h"
 #include <sys/timeb.h>
+#include <process.h>
 
 #include "Os.h"
 
@@ -239,4 +240,105 @@ bool osFileTimeToTime(unsigned __int64 fileTime, OsTime* time)
 bool osFlushInstructionCache()
 {
 	return FlushInstructionCache(GetCurrentProcess(), NULL, 0) != 0;
+}
+
+OsThread osCreateThread(OsThreadProc proc, void* argument, unsigned long* id)
+{
+	unsigned int threadID = 0;
+	OsThread thread = (OsThread)_beginthreadex(
+			0,		// security
+			0,		// stack size (0 = use default)
+			proc,
+			argument,
+			CREATE_SUSPENDED,
+			&threadID);
+	*id = threadID;
+	return thread;
+}
+
+void osCloseThread(OsThread thread)
+{
+	CloseHandle(thread);
+}
+
+void osExitThread(unsigned code)
+{
+	_endthreadex(code);
+}
+
+unsigned long osCurrentThreadId()
+{
+	return GetCurrentThreadId();
+}
+
+OsThread osOpenCurrentThread()
+{
+	HANDLE thread = 0;
+	DuplicateHandle(
+		GetCurrentProcess(),
+		GetCurrentThread(),
+		GetCurrentProcess(),
+		&thread,
+		0,
+		TRUE,
+		DUPLICATE_SAME_ACCESS);
+	return thread;
+}
+
+void* osStackTop()
+{
+	long dummy = 0;
+	MEMORY_BASIC_INFORMATION info;
+	VirtualQuery(&dummy, &info, sizeof(MEMORY_BASIC_INFORMATION));
+	return (char*)info.BaseAddress + info.RegionSize;
+}
+
+bool osSuspendThread(OsThread thread)
+{
+	return SuspendThread(thread) != (DWORD)-1;
+}
+
+void osResumeThread(OsThread thread)
+{
+	ResumeThread(thread);
+}
+
+bool osGetThreadRegisters(OsThread thread, OsRegisters* registers)
+{
+	CONTEXT context;
+	context.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+	if (!GetThreadContext(thread, &context))
+		return false;
+	registers->eax = context.Eax;
+	registers->ebx = context.Ebx;
+	registers->ecx = context.Ecx;
+	registers->edx = context.Edx;
+	registers->esi = context.Esi;
+	registers->edi = context.Edi;
+	registers->ebp = context.Ebp;
+	registers->esp = context.Esp;
+	registers->eip = context.Eip;
+	registers->eflags = context.EFlags;
+	return true;
+}
+
+bool osSetThreadRegisters(OsThread thread, const OsRegisters* registers)
+{
+	// the rest of what goes with these registers stays as it is
+	CONTEXT context;
+	context.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+	if (!GetThreadContext(thread, &context))
+		return false;
+	context.Eax = registers->eax;
+	context.Ebx = registers->ebx;
+	context.Ecx = registers->ecx;
+	context.Edx = registers->edx;
+	context.Esi = registers->esi;
+	context.Edi = registers->edi;
+	context.Ebp = registers->ebp;
+	context.Esp = registers->esp;
+	context.Eip = registers->eip;
+	context.EFlags = registers->eflags;
+	context.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+	return SetThreadContext(thread, &context) != 0;
 }

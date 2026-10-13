@@ -24,8 +24,8 @@ struct ThreadRecord
 
 	ThreadRecord* next;
 	LispObj* QV_rec;
-	HANDLE thread;				// Win32 thread handle
-	DWORD  threadID;			// Win32 thread ID
+	OsThread thread;
+	DWORD  threadID;
 	unsigned long* stackStart;
 	PLEvent event;
 	int started;

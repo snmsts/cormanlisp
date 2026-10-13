@@ -369,7 +369,7 @@ UINT LispMainProc(LPVOID /*pParam*/)
 	LispObj fp = 0;
 	ThreadRecord* th = 0;
 	DWORD currThreadID = 0;
-	currThreadID = GetCurrentThreadId();
+	currThreadID = osCurrentThreadId();
 	WSADATA wsd;
 
 	__asm	mov  dummy, ebp
@@ -407,7 +407,7 @@ UINT LispMainProc(LPVOID /*pParam*/)
 
 end:
 	CoUninitialize();
-	_endthreadex(0);
+	osExitThread(0);
 	return 0;
 }
 
@@ -425,13 +425,7 @@ RunLispThread(HANDLE* thread)
 	th->started = 1;
 
 	// create the thread
-	th->thread = (HANDLE)_beginthreadex(
-			0,		// security
-			0,		// stack size (0 = use default)
-			(unsigned(__stdcall*)(void*))LispMainProc, // thread proc
-			0,		// arglist
-			CREATE_SUSPENDED,		// init flags
-			(UINT*)&th->threadID);
+	th->thread = osCreateThread((OsThreadProc)LispMainProc, 0, &th->threadID);
 	if (thread)
 		*thread = th->thread;
 
@@ -440,8 +434,7 @@ RunLispThread(HANDLE* thread)
 	//	AfxMessageBox("Could not start main lisp thread.");
 		return;
 	}
-	SetThreadPriority(th->thread, THREAD_PRIORITY_NORMAL);
-	ResumeThread(th->thread);
+	osResumeThread(th->thread);
 }
 
 extern int lispSecondary(LispObj func);
@@ -453,11 +446,7 @@ extern int lispSecondary(LispObj func);
 //
 unsigned long* getStackStart()
 {
-	long dummy = 0;
-	long* stackEnd = &dummy;
-	MEMORY_BASIC_INFORMATION info;
-	long ret = VirtualQuery(stackEnd, &info, sizeof(MEMORY_BASIC_INFORMATION));
-	return (unsigned long*)(((char*)info.BaseAddress) + info.RegionSize - 4);
+	return (unsigned long*)((char*)osStackTop() - 4);
 }
 
 // This is the thread procedure for all non-primary lisp threads
@@ -467,7 +456,7 @@ UINT
 SecondaryThreadProc(LPVOID func)
 {
 	ThreadRecord* thisThread = 0;
-	DWORD currThreadID = GetCurrentThreadId();
+	DWORD currThreadID = osCurrentThreadId();
 	HANDLE currThreadHandle = 0;
 	LispObj fp = 0;
 	LispObj dummy = 0;
@@ -512,8 +501,8 @@ SecondaryThreadProc(LPVOID func)
 	ThreadList.remove(thisThread);
  	NumLispThreads--;
 
-	_endthreadex(0);
-	CloseHandle(currThreadHandle);
+	osExitThread(0);
+	osCloseThread(currThreadHandle);
 
 	return 0;
 }
@@ -538,21 +527,14 @@ RunSecondaryThread(LispObj func)
     th->started = 1;
 
     // create the thread
-    th->thread = (HANDLE)_beginthreadex(
-		    0,		// security
-		    0,		// stack size (0 = use default)
-		    (unsigned(__stdcall*)(void*))SecondaryThreadProc, // thread proc
-		    (void*)func,	// arglist
-		    CREATE_SUSPENDED,		// init flags
-		    (UINT*)&th->threadID);
+    th->thread = osCreateThread((OsThreadProc)SecondaryThreadProc, (void*)func, &th->threadID);
 
     if (!th->thread)
     {
 	    return 0;
     }
 
-    SetThreadPriority(th->thread, THREAD_PRIORITY_NORMAL);
-    ResumeThread(th->thread);
+    osResumeThread(th->thread);
     WaitForSingleObject(th->event.m_hObject, INFINITE); // timeout after 5 seconds
     th->event.ResetEvent();
 
@@ -590,15 +572,8 @@ extern "C" __declspec(dllexport) void BlessThread()
 
 		    th->QV_rec = createNewQV();
 		    th->stackStart = getStackStart();
-		    th->threadID = GetCurrentThreadId();
-		    ret = DuplicateHandle(
-			    GetCurrentProcess(),
-			    GetCurrentThread(),
-			    GetCurrentProcess(),
-			    &threadHandle,
-			    0,
-			    TRUE,
-			    DUPLICATE_SAME_ACCESS);
+		    th->threadID = osCurrentThreadId();
+		    threadHandle = osOpenCurrentThread();
 
 		    th->thread = threadHandle;
 
@@ -615,7 +590,7 @@ extern "C" __declspec(dllexport) void BlessThread()
 		    pushDynamicBinding(COMPILER_RUNTIME, NIL);
 
 		    // bind ccl:*current-thread-id*, ccl:*current-thread-handle*
-		    pushDynamicBinding(CURRENT_THREAD_ID, createUnsignedLispInteger(GetCurrentThreadId()));
+		    pushDynamicBinding(CURRENT_THREAD_ID, createUnsignedLispInteger(osCurrentThreadId()));
 		    fp = foreignNode();
 		    UVECTOR(fp)[FOREIGN_PTR] = (LispObj)th->thread;
 		    pushDynamicBinding(CURRENT_THREAD_HANDLE, fp);
@@ -659,7 +634,7 @@ extern "C" __declspec(dllexport) void UnblessThread()
 				popDynamicBinding(CURRENT_THREAD_ID);
 				popDynamicBinding(CURRENT_THREAD_HANDLE);
 			}
-		    CloseHandle(th->thread);
+		    osCloseThread(th->thread);
 
 		    // remove the thread record--this also deletes the ThreadRecord
 		    ThreadList.remove(th);
@@ -724,7 +699,7 @@ void ThrowUserException()
 }
 
 long user_abort = 0;
-static CONTEXT lispContext;
+static OsRegisters lispContext;
 
 // This function is used by AbortLispThread() to force
 // a call to the ThrowUserException() function.
@@ -753,27 +728,25 @@ void AbortLispThread()
 	    }
 	    th = tr->thread;
 	    user_abort = 1;
-	    SuspendThread(th);
+	    osSuspendThread(th);
 	    ThreadList.ensureSafeState(tr);
-	    lispContext.ContextFlags = CONTEXT_FULL;
-	    GetThreadContext(th, &lispContext);
+	    osGetThreadRegisters(th, &lispContext);
 	    if (!((tr->QV_rec[STACK_MARKER_INDEX_Index] >> 2) & 1))
 	    {
-		    lispContext.Eax = lispContext.Eip;
-		    lispContext.Eip = (long)CallThrowUserExceptionStub;
-		    lispContext.ContextFlags = CONTEXT_FULL;
-		    SetThreadContext(th, &lispContext);
+		    lispContext.eax = lispContext.eip;
+		    lispContext.eip = (long)CallThrowUserExceptionStub;
+		    osSetThreadRegisters(th, &lispContext);
 	    }
 	    else
 	    {
 		    // cannot abort--executing in foreign code
 	    }
-	    ResumeThread(th);
+	    osResumeThread(th);
     }
 	    GCCriticalSection.Leave();
 }
 
-static CONTEXT terminateContext;
+static OsRegisters terminateContext;
 
 static void ThrowExitThread(LispObj result)
 {
@@ -793,14 +766,12 @@ void TerminateLispThread(LispObj threadID, LispObj ret)
 	HANDLE h = ThreadList.GetLispThreadHandle(lispIntegerToUnsignedLong(threadID));
 	if (h)
 	{
-		SuspendThread(h);
-		terminateContext.ContextFlags = CONTEXT_FULL;
-		GetThreadContext(h, &terminateContext);
-		terminateContext.Eip = (long)TerminateLispThreadException;
-		terminateContext.Edi = (long)ret;
-		terminateContext.ContextFlags = CONTEXT_FULL;
-		SetThreadContext(h, &terminateContext);
-		ResumeThread(h);
+		osSuspendThread(h);
+		osGetThreadRegisters(h, &terminateContext);
+		terminateContext.eip = (long)TerminateLispThreadException;
+		terminateContext.edi = (long)ret;
+		osSetThreadRegisters(h, &terminateContext);
+		osResumeThread(h);
 	}
 	else
 		Error("Not a valid lisp thread ID: ~A", threadID);

@@ -117,7 +117,7 @@ LispThreadQueue::suspendAllOtherThreads()
 		if (tr != currThread)
         {
         retry_suspend:
-			ret = SuspendThread(tr->thread);
+			ret = osSuspendThread(tr->thread) ? 0 : (DWORD)-1;
             if (ret == (DWORD)-1)
             {
                 osSleep(wait++);
@@ -140,7 +140,7 @@ void LispThreadQueue::suspendAllOtherThreadsWithoutLocking()
 	while (tr)
 	{
 		if (tr != currThread)
-			SuspendThread(tr->thread);
+			osSuspendThread(tr->thread);
 		tr = tr->next;
 	}
 }
@@ -153,7 +153,7 @@ void LispThreadQueue::resumeAllOtherThreads()
 	while (tr)
 	{
 		if (tr != currThread)
-			ResumeThread(tr->thread);
+			osResumeThread(tr->thread);
 		tr = tr->next;
 	}
 	TQCriticalSection.Leave();
@@ -170,7 +170,7 @@ void LispThreadQueue::resumeAllOtherThreadsWithoutLocking()
 	while (tr)
 	{
 		if (tr != currThread)
-			ResumeThread(tr->thread);
+			osResumeThread(tr->thread);
 		tr = tr->next;
 	}
 }
@@ -228,7 +228,7 @@ void LispThreadQueue::ensureSafeStates()
 	{
 		ThreadRecord* currThread = (ThreadRecord*)osThreadSlotValue(Thread_Index);
 		ThreadRecord* tr = getList();
-		static CONTEXT lispContext;
+		static OsRegisters lispContext;
 		while (tr)
 		{
 			if (tr != currThread)	// we know this thread is safe
@@ -248,12 +248,11 @@ void LispThreadQueue::ensureSafeStates()
 //
 void LispThreadQueue::ensureSafeState(ThreadRecord* tr)
 {
-	static CONTEXT lispContext;
+	static OsRegisters lispContext;
     DWORD ret = 0;
-	lispContext.ContextFlags = CONTEXT_CONTROL;
-	GetThreadContext(tr->thread, &lispContext);
-	DWORD ip = lispContext.Eip;
-	DWORD flags = lispContext.EFlags;
+	osGetThreadRegisters(tr->thread, &lispContext);
+	DWORD ip = lispContext.eip;
+	DWORD flags = lispContext.eflags;
 	int wait = 1;
 	while ((/*inAnyLispHeap(ip) &&*/ DirectionFlagSet(flags))
 			|| inSysGlobalsHeap(ip)
@@ -270,10 +269,10 @@ void LispThreadQueue::ensureSafeState(ThreadRecord* tr)
         // from attempting to modify the thread list
         //
         ThreadList.Lock();
-		ResumeThread(tr->thread);
+		osResumeThread(tr->thread);
     retry_suspend:
 		osSleep(wait++);	// wait 1 or more milliseconds
-		ret = SuspendThread(tr->thread);	// try again
+		ret = osSuspendThread(tr->thread) ? 0 : (DWORD)-1;	// try again
         if (ret == (DWORD)-1)
             goto retry_suspend;
 
@@ -291,10 +290,9 @@ void LispThreadQueue::ensureSafeState(ThreadRecord* tr)
 		if (tr2 == tr)
 		{
 			// still alive--update ip and flag information
-			lispContext.ContextFlags = CONTEXT_CONTROL;
-			GetThreadContext(tr->thread, &lispContext);
-			ip = lispContext.Eip;
-			flags = lispContext.EFlags;
+			osGetThreadRegisters(tr->thread, &lispContext);
+			ip = lispContext.eip;
+			flags = lispContext.eflags;
 			continue;
 		}
 	}
