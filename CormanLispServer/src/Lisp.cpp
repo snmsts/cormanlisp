@@ -2382,9 +2382,8 @@ LispFunction(Throw_Exception)
 			if (hostAttached())
 				wnd = (HWND)hostAppMainWindow();
 
-			MessageBox(wnd, "Sorry, no global error handler was found--Corman Lisp is quitting.",
-				"Fatal Error", 
-				MB_OK|MB_SETFOREGROUND);
+			osShowMessage(wnd, "Sorry, no global error handler was found--Corman Lisp is quitting.",
+				"Fatal Error", true);
 			if (hostAttached())
 				hostSetMessage("Corman Lisp has stopped.");
 			osExitThread((unsigned)-1);

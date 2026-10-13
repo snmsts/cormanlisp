@@ -1093,10 +1093,9 @@ void writeMemoryReport(void* address, CONTEXT* context)
             {
                 wnd = (HWND)hostAppMainWindow();
                 ThreadList.resumeAllOtherThreads();
-                MessageBox(wnd, "A system report could not be written because an error was encountered on\n"
+                osShowMessage(wnd, "A system report could not be written because an error was encountered on\n"
                                 "the attempt to open the file 'CormanLisp_Dump.log'.",
-                                "System Error",
-                                MB_OK);
+                                "System Error", false);
                 return;
             }
 
@@ -1180,9 +1179,8 @@ void writeMemoryReport(void* address, CONTEXT* context)
             dumpLispHeap(file, &LispHeap1, "LispHeap1");
             fprintf(file, "\n");
 
-            MessageBox(wnd, "A system report has been saved to the file 'CormanLisp_Dump.log'\n",
-                            "System Report Generated",
-                            MB_OK);
+            osShowMessage(wnd, "A system report has been saved to the file 'CormanLisp_Dump.log'\n",
+                            "System Report Generated", false);
 
         }
         {

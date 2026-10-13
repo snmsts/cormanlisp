@@ -191,6 +191,11 @@ void osDebugMessage(const char* message)
 	OutputDebugString(message);
 }
 
+void osShowMessage(void* window, const char* text, const char* title, bool inFront)
+{
+	MessageBox((HWND)window, text, title, inFront ? MB_OK|MB_SETFOREGROUND : MB_OK);
+}
+
 static void fromSystemTime(const SYSTEMTIME* from, OsTime* time)
 {
 	time->year = from->wYear;

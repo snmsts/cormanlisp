@@ -211,4 +211,8 @@ extern unsigned long osLastError();
 //	A message for whoever is debugging the kernel.
 extern void osDebugMessage(const char* message);
 
+//	Tells the user something which cannot wait, and returns when they
+//	have seen it. The window, if there is one, is the host's.
+extern void osShowMessage(void* window, const char* text, const char* title, bool inFront);
+
 #endif // OS_H
