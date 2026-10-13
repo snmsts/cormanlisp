@@ -44,6 +44,21 @@ The IDE is an MFC application. It is built when the "C++ MFC for x86"
 component of the compiler is installed, and left out otherwise;
 `-DCORMANLISP_BUILD_IDE=ON` or `OFF` overrides that.
 
+### Building with clang
+
+The kernel and the console front end can also be built with `clang-cl`,
+the MSVC-compatible driver of clang, still as 32-bit x86 code and with
+the Microsoft libraries. From a command prompt set up for the x86
+Microsoft tools:
+
+    cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Standard ^
+      -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl ^
+      -DCMAKE_C_COMPILER_TARGET=i686-pc-windows-msvc ^
+      -DCMAKE_CXX_COMPILER_TARGET=i686-pc-windows-msvc
+    cmake --build build
+
+The IDE is not built this way yet.
+
 The installer is not part of the CMake build yet.
 
 ### Libraries needed at run time

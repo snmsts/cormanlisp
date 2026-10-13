@@ -21,9 +21,14 @@ endif()
 
 option(CORMANLISP_SYSTEM_ZLIB "Use an installed zlib instead of downloading the sources" OFF)
 option(CORMANLISP_BUILD_IMAGE "Build CormanLisp.img as part of the default target" ON)
-# The IDE needs the MFC component of the compiler.
+# The IDE needs the MFC component of the compiler, and so far it is only
+# built with the Microsoft compiler.
 find_package(MFC QUIET)
-option(CORMANLISP_BUILD_IDE "Build the IDE, CormanLisp.exe (needs MFC)" ${MFC_FOUND})
+set(_ide_default OFF)
+if(MFC_FOUND AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+  set(_ide_default ON)
+endif()
+option(CORMANLISP_BUILD_IDE "Build the IDE, CormanLisp.exe (needs MFC)" ${_ide_default})
 
 # The executables locate Sys/, Modules/ and the image relative to their own
 # directory, so they are placed at the top of the source tree.
@@ -49,6 +54,10 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreadedDLL)
 
 add_compile_options(/W3 /GS- /arch:IA32 /fp:precise)
 add_compile_definitions(WIN32 NDEBUG)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+  # Old habits of the sources which clang reports at every use.
+  add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:-Wno-writable-strings;-Wno-missing-braces;-Wno-microsoft-exception-spec;-Wno-nonportable-include-path>")
+endif()
 # Lisp code is generated into the heap and run from there: no DEP.
 add_link_options(/NXCOMPAT:NO /DYNAMICBASE)
 
