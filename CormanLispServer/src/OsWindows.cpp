@@ -8,10 +8,11 @@
 //
 
 #include <ws2tcpip.h>
-#include "stdafx.h"
+#include "Stdafx.h"
 #include <ole2.h>
 #include <sys/timeb.h>
-#include <process.h>
+#include <userenv.h>
+#include <shlobj.h>
 
 #include "Os.h"
 
@@ -46,6 +47,32 @@ bool osProtectMemory(void* address, unsigned long size, bool writable)
 	DWORD oldProtect = 0;
 	return VirtualProtect(address, size,
 		writable ? PAGE_EXECUTE_READWRITE : PAGE_EXECUTE_READ, &oldProtect) != 0;
+}
+
+bool osCanRead(const void* address, unsigned long size)
+{
+	return !IsBadReadPtr(address, size);
+}
+
+bool osGuardPage(void* address)
+{
+	DWORD oldProtect = 0;
+	return VirtualProtect(address, 1, PAGE_GUARD | PAGE_READWRITE, &oldProtect) != 0;
+}
+
+void* osHeapAllocate(unsigned long size)
+{
+	return HeapAlloc(GetProcessHeap(), 0, size);
+}
+
+void osHeapFree(void* memory)
+{
+	HeapFree(GetProcessHeap(), 0, memory);
+}
+
+void* osHeapReallocate(void* memory, unsigned long size)
+{
+	return HeapReAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, memory, size);
 }
 
 OsThreadSlot osAllocateThreadSlot()
@@ -179,6 +206,78 @@ bool osFreeLibrary(void* library)
 void* osLibrarySymbol(void* library, const char* name)
 {
 	return (void*)GetProcAddress((HMODULE)library, name);
+}
+
+unsigned long osProcessId()
+{
+	return GetCurrentProcessId();
+}
+
+void* osProcessHandle()
+{
+	return GetCurrentProcess();
+}
+
+unsigned long osModulePath(void* module, char* path, unsigned long size)
+{
+	return GetModuleFileName((HMODULE)module, path, size);
+}
+
+bool osSetCurrentDirectory(const char* path)
+{
+	return SetCurrentDirectoryA(path) != 0;
+}
+
+void osMarkKernelLoaded()
+{
+	// a named mutex, which another program can look for
+	CreateMutex(NULL, FALSE, "CormanLispServer");
+}
+
+bool osUserName(char* name, unsigned long size)
+{
+	DWORD length = size;
+	return GetUserNameA(name, &length) != 0;
+}
+
+static bool endWithSeparator(char* path, unsigned long size)
+{
+	size_t length = strlen(path);
+	if (length == 0 || path[length - 1] != '\\')
+	{
+		if (length + 2 > size)
+			return false;
+		path[length] = '\\';
+		path[length + 1] = 0;
+	}
+	return true;
+}
+
+bool osUserDirectory(char* path, unsigned long size)
+{
+	HANDLE token = NULL;
+	DWORD length = size;
+	bool found = false;
+	if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token) || token == NULL)
+		return false;
+	found = GetUserProfileDirectoryA(token, path, &length) != 0;
+	CloseHandle(token);
+	return found && endWithSeparator(path, size);
+}
+
+bool osUserDocumentsDirectory(char* path, unsigned long size)
+{
+	HANDLE token = NULL;
+	char found[MAX_PATH] = { 0 };
+	bool ok = false;
+	if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token) || token == NULL)
+		return false;
+	ok = SHGetFolderPathA(NULL, CSIDL_PERSONAL, token, SHGFP_TYPE_CURRENT, found) == S_OK;
+	CloseHandle(token);
+	if (!ok || strlen(found) + 1 > size)
+		return false;
+	strcpy_s(path, size, found);
+	return endWithSeparator(path, size);
 }
 
 unsigned long osLastError()

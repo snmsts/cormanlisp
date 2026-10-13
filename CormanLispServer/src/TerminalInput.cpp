@@ -8,7 +8,7 @@
 //					as its console input.
 //		History:	8/5/97  RGC Created.
 //
-#include "stdafx.h"
+#include "Stdafx.h"
 #include <string.h>
 
 #include "TerminalInput.h"

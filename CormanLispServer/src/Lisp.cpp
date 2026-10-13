@@ -14,19 +14,17 @@
 //                              stringNode() now handles chars > 127 correctly, which
 //                              means ct:c-string-to-lisp-string handles them correctly.
 //
-#include "stdafx.h"
+#include "Stdafx.h"
 #include "ExceptionFrame.h"
 #include <stdlib.h>
 #include <setjmp.h>
 #include <string.h>
 #include <stdarg.h>
 #include <malloc.h>
-#include <io.h>
 #include <fcntl.h>
-#include <direct.h>
 #include <stdio.h>
 
-#include "lisp.h"
+#include "Lisp.h"
 #include "threadclasses.h"
 #include "ErrorMessage.h"
 #include "CormanLispServer.h"
@@ -34,7 +32,6 @@
 #include "Version.h"
 
 #ifdef X86
-#include <wtypes.h>
 #endif
 
 #pragma warning (disable:4127)				// conditional expression is constant
@@ -730,7 +727,7 @@ initLisp()
 	// initialize *cormanlisp-directory* variable
 	if (hostAttached())
 		appHandle = (decltype(appHandle))hostAppInstance();
-	numChars = GetModuleFileName((HINSTANCE)appHandle, CormanLispDirectoryBuffer, _MAX_PATH);
+	numChars = osModulePath(appHandle, CormanLispDirectoryBuffer, _MAX_PATH);
 	for (i = numChars - 1; i >= 0; i--)
 	{
 		if (CormanLispDirectoryBuffer[i] == '/' || CormanLispDirectoryBuffer[i] == '\\')
@@ -750,9 +747,9 @@ initLisp()
 
 	setSymbolValue(CURRENT_THREAD_ID, NIL);
 	setSymbolValue(CURRENT_THREAD_HANDLE, NIL);
-	setSymbolValue(CURRENT_PROCESS_ID, createUnsignedLispInteger(GetCurrentProcessId()));
+	setSymbolValue(CURRENT_PROCESS_ID, createUnsignedLispInteger(osProcessId()));
 	fp = foreignNode();
-	UVECTOR(fp)[FOREIGN_PTR] = (LispObj)GetCurrentProcess();
+	UVECTOR(fp)[FOREIGN_PTR] = (LispObj)osProcessHandle();
 	setSymbolValue(CURRENT_PROCESS_HANDLE, fp);
 	setSymbolValue(COMPRESS_IMG, NIL);
 	setSymbolValue(COMPILED_SPECIALS, NIL);
@@ -2662,22 +2659,16 @@ double __declspec(naked) shortFloat(LispObj /*d*/)
 // Use these instead of malloc()/free()
 void* CAlloc(unsigned long size)
 {
-	HANDLE heap = 0;
-	heap = GetProcessHeap();
-	return HeapAlloc(heap, 0, size);
+	return osHeapAllocate(size);
 }
 
 void CFree(void* p)
 {
-	HANDLE heap = 0;
-	heap = GetProcessHeap();
-	HeapFree(heap, 0, p);
+	osHeapFree(p);
 }
 
 // Use instead of realloc()
 void* CRealloc(void* p, unsigned long size)
 {
-	HANDLE heap = 0;
-	heap = GetProcessHeap();
-	return HeapReAlloc(heap, HEAP_ZERO_MEMORY, p, size);
+	return osHeapReallocate(p, size);
 }

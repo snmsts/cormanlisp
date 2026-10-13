@@ -7,15 +7,14 @@
 //		Contents:	Corman Lisp kernel reader
 //		History:	6/5/96  RGC  Created.
 //
-#include "stdafx.h"
+#include "Stdafx.h"
 #include <ctype.h>
 #include <stdlib.h>
-#include <io.h>
 #include <fcntl.h>
 
 #pragma warning (disable:4127)				// conditional expression is constant
 
-#include "lisp.h"
+#include "Lisp.h"
 #include "CormanLispServer.h"
 
 // static functions defined in this file

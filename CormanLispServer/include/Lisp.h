@@ -19,7 +19,7 @@
 #ifndef LISP_H
 #define LISP_H
 
-#include "generic.h"
+#include "Generic.h"
 #include "Os.h"
 
 typedef unsigned long LispObj;

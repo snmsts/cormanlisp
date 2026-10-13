@@ -28,7 +28,7 @@
 //					11/22/16  Artem Boldarev
 //							  getImageLoadsCount() function.
 //
-#include "stdafx.h"
+#include "Stdafx.h"
 #include "ExceptionFrame.h"
 
 // windows.h does not define these for every compiler
@@ -38,12 +38,9 @@
 #ifndef max
 #define max(a, b) (((a) > (b)) ? (a) : (b))
 #endif
-#include <wtypes.h>
 #include <memory.h>
-#include <windows.h>
 #include <assert.h>
 #include <stdio.h>
-#include <process.h>
 #include <stddef.h>
 #include <time.h>
 
@@ -3680,9 +3677,9 @@ void readHeap(FILE* is)
             fp = foreignNode();
             UVECTOR(fp)[FOREIGN_PTR] = (LispObj)currThread->thread;
             pushDynamicBinding(CURRENT_THREAD_HANDLE, fp);
-            setSymbolValue(CURRENT_PROCESS_ID, createUnsignedLispInteger(GetCurrentProcessId()));
+            setSymbolValue(CURRENT_PROCESS_ID, createUnsignedLispInteger(osProcessId()));
             fp = foreignNode();
-            UVECTOR(fp)[FOREIGN_PTR] = (LispObj)GetCurrentProcess();
+            UVECTOR(fp)[FOREIGN_PTR] = (LispObj)osProcessHandle();
             setSymbolValue(CURRENT_PROCESS_HANDLE, fp);
             fp = 0;
 

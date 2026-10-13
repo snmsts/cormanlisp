@@ -12,7 +12,7 @@
 #ifndef EXCEPTIONFRAME_H
 #define EXCEPTIONFRAME_H
 
-#include <windows.h>
+#include "Stdafx.h"
 
 //
 //	A place in a function to come back to, abandoning whatever has been

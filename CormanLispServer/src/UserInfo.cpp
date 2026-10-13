@@ -11,9 +11,10 @@
 
 #include "UserInfo.h"
 
-#include <windows.h>
-#include <userenv.h>
-#include <shlobj.h>
+#include <string.h>
+
+#include "Stdafx.h"
+#include "Os.h"
 
 UserInfo::UserInfo(void)
 : name(NULL), name_len(0),
@@ -72,129 +73,30 @@ int UserInfo::GetVersion(void) const
 	return version;
 }
 
+//	Stores a copy of the text in what the destination points to.
+static void keep(const char* text, char** destination, size_t* length)
+{
+	size_t n = strlen(text);
+	char* copy = new char[n + 1];
+	memcpy(copy, text, n + 1);
+	*destination = copy;
+	*length = n;
+}
+
 bool UserInfo::FillUserInfo(UserInfo &ui)
 {
-	// obraining user name
-	DWORD user_name_size = 0;
-	DWORD user_profile_buffer_size = 0;
-	size_t user_personal_size = 0;
-	char *name_buf = NULL;
-	char *profile_buf = NULL;
-	char *personal_buf = NULL;
-	bool user_name_status = true;
-	bool user_profile_status = true;
-	bool user_personal_status = false;
-
-	/// !!! Get currently logged in user login name. !!!
-	// get buffer size
-	GetUserNameA(NULL, &user_name_size);
-	if (user_name_size == 0)
-	{
-		user_name_status = false;
-	}
-
+	char buffer[1024] = { 0 };
+	bool user_name_status = osUserName(buffer, sizeof(buffer));
 	if (user_name_status)
-	{
-		// allocate buffer for user name
-		name_buf = new char[user_name_size];
-		if (!GetUserNameA(name_buf, &user_name_size))
-		{
-			delete[] name_buf;
-			name_buf = NULL;
-			user_name_status = false;
-		}
-	}
+		keep(buffer, &ui.name, &ui.name_len);
 
-	/// !!! Get currently logged in user profile directory path. !!!
-	{
-		// get user token handle
-		HANDLE user_token = NULL;
-		BOOL res = OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &user_token);
-		if (res == FALSE || user_token == NULL)
-		{
-			user_profile_status = false;
-		}
-
-		// get user profile path itself 
-		if (user_profile_status)
-		{
-			// get buffer size
-			GetUserProfileDirectoryA(user_token, NULL, &user_profile_buffer_size);
-			// At least on Windows 10 LTSC 2019 (RS5) the above call always fails.
-			// Let's try to allocate reasonably large buffer and try to get the path to the profile anyway.
-			if (user_profile_buffer_size == 0)
-			{
-				user_profile_buffer_size = MAX_PATH + 1; // '\0'
-			}
-
-			// get path
-			if (user_profile_status)
-			{
-				profile_buf = new char[user_profile_buffer_size + 1]; // for '\\' at the end
-				res = GetUserProfileDirectoryA(user_token, profile_buf, &user_profile_buffer_size);
-				if (res == FALSE || user_profile_buffer_size == 0)
-				{
-					delete[] profile_buf;
-					user_profile_status = false;
-				}
-				else
-				{
-					char c;
-					if (user_profile_buffer_size <= 2 || (c = profile_buf[user_profile_buffer_size - 2]) != '\\')
-					{
-						strcat_s(profile_buf, user_profile_buffer_size + 1, "\\");
-						user_profile_buffer_size += 1;
-					}
-				}
-			}
-		}
-
-		if (user_token != NULL)
-		{
-			char buf[MAX_PATH] = { 0 };
-			// obtain path to the Documents folder
-			if (SHGetFolderPathA(NULL, CSIDL_PERSONAL, user_token, SHGFP_TYPE_CURRENT, (char *)buf) == S_OK)
-			{
-				bool append_backslash = false;
-				size_t len  = strnlen((char *)buf, MAX_PATH);
-				user_personal_size = len + 1;
-				if (user_personal_size <= 2 || buf[user_personal_size - 2] != '\\')
-				{
-					append_backslash = true;
-					user_personal_size += 1;
-				}
-
-				personal_buf = new char[user_personal_size];
-				strncpy_s(personal_buf, user_personal_size, (char *)buf, len);
-
-				if (append_backslash)
-				{
-					strcat_s(personal_buf, user_personal_size, "\\");
-				}
-				user_personal_status = true;
-			}
-			CloseHandle(user_token);
-		}
-	}
-
-	// fill UserInfo
-	if (user_name_status)
-	{
-		ui.name = name_buf;
-		ui.name_len = user_name_size - 1;
-	}
-
+	bool user_profile_status = osUserDirectory(buffer, sizeof(buffer));
 	if (user_profile_status)
-	{
-		ui.profile_directory = profile_buf;
-		ui.profile_directory_len = user_profile_buffer_size - 1;
-	}
+		keep(buffer, &ui.profile_directory, &ui.profile_directory_len);
 
+	bool user_personal_status = osUserDocumentsDirectory(buffer, sizeof(buffer));
 	if (user_personal_status)
-	{
-		ui.personal_directory = personal_buf;
-		ui.personal_directory_len = user_personal_size - 1;
-	}
+		keep(buffer, &ui.personal_directory, &ui.personal_directory_len);
 
 	return user_name_status && user_profile_status && user_personal_status;
 }

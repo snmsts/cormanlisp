@@ -11,9 +11,8 @@
 #ifndef LISPTHREADQUEUE_H
 #define LISPTHREADQUEUE_H
 
-#include <windows.h>
 
-#include "ThreadClasses.h"
+#include "threadclasses.h"
 
 struct ThreadRecord
 {
@@ -58,7 +57,6 @@ public:
 
 private:
 	ThreadRecord* list;
-	HANDLE waitEvent;
 };
 
 #endif	// LISPTHREADQUEUE_H

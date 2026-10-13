@@ -8,17 +8,14 @@
 //		History:	6/19/96 RGC Created.
 //					1/12/00 RGC Added EXECUTE_FINALIZERS to support post-GC finalization.
 //
-#include "stdafx.h"
+#include "Stdafx.h"
 #include "ExceptionFrame.h"
-#include <io.h>
-#include <windows.h>
 #include <sys/timeb.h>
 #include <stdio.h>
-#include <direct.h>
 #include <malloc.h>
 
-#include "lisp.h"
-#include "lispmath.h"
+#include "Lisp.h"
+#include "Lispmath.h"
 #include "CormanLispServer.h"
 #include "Host.h"
 #include "Version.h"
@@ -2500,12 +2497,9 @@ extern long gStackOverflowAddress;
 LispFunction(Protect_Stack)
 {
 	LISP_FUNC_BEGIN(0);
-	unsigned long oldProtect = 0;
-	long result = 0;
 	if (gStackOverflowAddress != 0)
 	{
-		result = VirtualProtect((void*)gStackOverflowAddress, 1, 
-				PAGE_GUARD | PAGE_READWRITE, &oldProtect);
+		osGuardPage((void*)gStackOverflowAddress);
 		ret = T;
 	}
 	else
@@ -4576,7 +4570,7 @@ static void updateKernelFunctions()
 	// initialize *cormanlisp-directory* variable
 	if (hostAttached())
 		appHandle = (decltype(appHandle))hostAppInstance();
-	numChars = GetModuleFileName((HINSTANCE)appHandle, CormanLispDirectoryBuffer, _MAX_PATH);
+	numChars = osModulePath(appHandle, CormanLispDirectoryBuffer, _MAX_PATH);
 	for (i = numChars - 1; i >= 0; i--)
 	{
 		if (CormanLispDirectoryBuffer[i] == '/' || CormanLispDirectoryBuffer[i] == '\\')
@@ -4862,7 +4856,7 @@ LispFunction(Change_Directory)
 	checkString(obj);
 
 	ret = NIL;
-	if (SetCurrentDirectoryA((char*)byteArrayStart(nullTerminate(obj))) == TRUE)
+	if (osSetCurrentDirectory((char*)byteArrayStart(nullTerminate(obj))))
 	{
 		ret = obj;
 	}

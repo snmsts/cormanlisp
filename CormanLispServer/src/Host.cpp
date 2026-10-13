@@ -8,7 +8,7 @@
 //					the functions by which a C program runs the kernel.
 //
 
-#include "stdafx.h"
+#include "Stdafx.h"
 #include <string.h>
 
 #include "Lisp.h"

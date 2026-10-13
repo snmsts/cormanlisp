@@ -11,7 +11,7 @@
 //					11/22/16  Artem Boldarev
 //							  GetImageLoadsCount() method.
 //
-#include "stdafx.h"
+#include "Stdafx.h"
 
 #include <windows.h>
 #include <initguid.h>

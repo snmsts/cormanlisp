@@ -11,7 +11,7 @@
 #ifndef LISPMATH_H
 #define LISPMATH_H
 
-#include "lisp.h"
+#include "Lisp.h"
 
 LispObj _Add(LispObj, LispObj);
 LispObj _Subtract(LispObj, LispObj);

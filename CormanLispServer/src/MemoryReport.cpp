@@ -8,9 +8,8 @@
 //                  Used to diagnose memory violations and other issues.
 //		History:	4/29/06  RGC  Created.
 //
-#include "stdafx.h"
+#include "Stdafx.h"
 #include <stdio.h>
-#include <process.h>
 #include <time.h>
 
 #include "Lisp.h"
@@ -31,7 +30,7 @@ static void writeSymbolName(FILE* file, LispObj sym)
         temp = wrap(temp, UvectorTag);  // if called during GC, watch for this case
     ch = charArrayStart(temp);
     numChars = integer(vectorLength(temp));
-    if (IsBadReadPtr(ch, numChars * 2))
+    if (!osCanRead(ch, numChars * 2))
         return;
     for (int i = 0; i < numChars; i++)
         fprintf(file, "%c", ch[i]);
@@ -44,7 +43,7 @@ static void writeSimpleCharVector(FILE* file, LispObj str)
     fprintf(file, "\"");
     ch = charArrayStart(str);
     numChars = integer(vectorLength(str));
-    if (IsBadReadPtr(ch, numChars * 2))
+    if (!osCanRead(ch, numChars * 2))
         return;
     for (int i = 0; i < numChars; i++)
         fprintf(file, "%c", ch[i]);
@@ -95,13 +94,13 @@ static void outputUvector(FILE* file, LispObj uvector)
         return;
     }
 
-    if (IsBadReadPtr((void*)stripTag(uvector), 8))
+    if (!osCanRead((void*)stripTag(uvector), 8))
     {
         fprintf(file, "{Error: Apparent heap object at address %08.8x is not accessible}", stripTag(uvector));
         return;
     }
     length = uvectorSize(uvector) * 8;
-    if (IsBadReadPtr((void*)stripTag(uvector), length))
+    if (!osCanRead((void*)stripTag(uvector), length))
     {
         fprintf(file, "{Error: Apparent heap object at address %08.8x is not accessible}", stripTag(uvector));
         return;
@@ -272,7 +271,7 @@ static void outputReferencedObject(FILE* file, LispObj obj, int indent)
             return;
         }
 
-        if (IsBadReadPtr((void*)stripTag(obj), 8))
+        if (!osCanRead((void*)stripTag(obj), 8))
             fprintf(file, "{Error: Apparent heap object at address %08.8x is not accessible}", stripTag(obj));
         else
         {
@@ -323,18 +322,18 @@ static void outputReferencedObject(FILE* file, LispObj obj, int indent)
 }
 
 static char timeBuffer[32];
-static struct tm newtime;
-static __time32_t aclock;
 
+//	The local time, as asctime() writes it.
 static char* getTime()
 {
-    errno_t errNum;
-    _time32(&aclock);   // Get time in seconds.
-    _localtime32_s(&newtime, &aclock);   // Convert time to struct tm form.
-
-    // Print local time as a string.
-
-    errNum = asctime_s(timeBuffer, 32, &newtime);
+    static const char* const days[] = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+    static const char* const months[] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                          "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+    OsTime now;
+    osLocalTime(&now);
+    sprintf_s(timeBuffer, sizeof(timeBuffer), "%s %s %02d %02d:%02d:%02d %d\n",
+        days[now.dayOfWeek % 7], months[(now.month + 11) % 12], now.day,
+        now.hour, now.minute, now.second, now.year);
     return timeBuffer;
 }
 
@@ -529,7 +528,7 @@ void findFunctionCallback(LispObj p)
         execaddr = (unsigned long)functionAddress(p);
         if (execaddr)
         {
-            if (IsBadReadPtr((void*)execaddr, 4))
+            if (!osCanRead((void*)execaddr, 4))
                 return;
             if (*(byte*)execaddr == 0xe9)
                 execaddr = (((unsigned long)execaddr) + *(long*)(((byte*)execaddr) + 1) + 5);
@@ -633,7 +632,7 @@ void writeThreadSummary(FILE* file, ThreadRecord* th)
 
     // make a copy of the stack
     stackLength = start - end + 1;		// stack start > end
-    stack = (StackCell*)HeapAlloc(GetProcessHeap(), 0, stackLength * sizeof(StackCell));
+    stack = (StackCell*)osHeapAllocate(stackLength * sizeof(StackCell));
     for (unsigned int i = 0; i < stackLength; i++)
     {
         stack[i].value = *(end + i);
@@ -708,7 +707,7 @@ void writeThreadSummary(FILE* file, ThreadRecord* th)
     else
         executionContext = "Foreign";
     if (stack)
-        HeapFree(GetProcessHeap(), 0, stack);
+        osHeapFree(stack);
 
     if (!frameName)
         frameName = "<Unknown>";
@@ -742,7 +741,7 @@ void writeThreadStackReport(FILE* file, ThreadRecord* th)
 
     // make a copy of the stack
     stackLength = start - end + 1;		// stack start > end
-    stack = (StackCell*)HeapAlloc(GetProcessHeap(), 0, stackLength * sizeof(StackCell));
+    stack = (StackCell*)osHeapAllocate(stackLength * sizeof(StackCell));
     for (unsigned int i = 0; i < stackLength; i++)
     {
         stack[i].value = *(end + i);
@@ -869,7 +868,7 @@ void writeThreadStackReport(FILE* file, ThreadRecord* th)
         fprintf(file, "  Execution context: Foreign\n");
     fprintf(file, "\n");
     if (stack)
-        HeapFree(GetProcessHeap(), 0, stack);
+        osHeapFree(stack);
 
 	// output QV array for this thread (system objects)
 	fprintf(file, "\nQV Array:\n");
@@ -999,7 +998,7 @@ void dumpUvector(FILE* file, LispObj u)
     {
         // display the contents of the block    
         int cells = (blockLength / 4);
-        if (!IsBadReadPtr(block, cells * 4))
+        if (osCanRead(block, cells * 4))
         {
             if (cells > 1024)
                 cells = 1024;       // print at most the first 4k bytes of a heap object

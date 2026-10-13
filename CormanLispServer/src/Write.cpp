@@ -8,16 +8,15 @@
 //		History:	6/5/96  RGC  Created.
 //
 
-#include "stdafx.h"
+#include "Stdafx.h"
 #include <ctype.h>
 #include <stdlib.h>
 #include <fcntl.h>
 #include <string.h>
-#include <io.h>
 #include <stdio.h>
 
-#include "generic.h"
-#include "lisp.h"
+#include "Generic.h"
+#include "Lisp.h"
 #include "CormanLispServer.h"
 #include "Host.h"
 

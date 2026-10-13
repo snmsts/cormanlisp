@@ -7,7 +7,7 @@
 //		Contents:	COM Class implementation for Corman Lisp COM server.
 //		History:	8/11/97  RGC  Created.
 //
-#include "stdafx.h"
+#include "Stdafx.h"
 
 #include <windows.h>
 #include <ole2.h>

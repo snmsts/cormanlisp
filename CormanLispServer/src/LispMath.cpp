@@ -11,11 +11,11 @@
 //								  arguments are zero.
 //
 
-#include "stdafx.h"
+#include "Stdafx.h"
 #include <math.h>
 #include <limits.h>
 
-#include "lispmath.h"
+#include "Lispmath.h"
 
 #pragma warning (disable:4244)				// conversion from 'int' to 'unsigned short', possible loss of data
 #pragma warning (disable:4127)				// conditional expression is constant

@@ -10,7 +10,7 @@
 #ifndef OS_H
 #define OS_H
 
-#include <windows.h>
+#include "Stdafx.h"
 
 //
 //	Memory, by the page. Committed memory can be read, written and
@@ -33,6 +33,20 @@ extern void* osAllocateMemory(unsigned long size);
 
 //	Releases what osAllocateMemory() returned.
 extern void osFreeMemory(void* address);
+
+//	Whether that many bytes at the address can be read.
+extern bool osCanRead(const void* address, unsigned long size);
+
+//	Makes the page at the address raise a stack overflow, once, when it
+//	is next touched.
+extern bool osGuardPage(void* address);
+
+//	Memory by the byte. Foreign code may be handed it and may free it.
+extern void* osHeapAllocate(unsigned long size);
+extern void osHeapFree(void* memory);
+
+//	What is added to the block starts out as zeros.
+extern void* osHeapReallocate(void* memory, unsigned long size);
 
 //	Makes committed pages read-only, or writable again. A write to a
 //	read-only page raises an access violation.
@@ -207,6 +221,32 @@ extern void* osLibrarySymbol(void* library, const char* name);
 //	The operating system's code for why the last call to it by this
 //	thread failed.
 extern unsigned long osLastError();
+
+//
+//	The process
+//
+extern unsigned long osProcessId();
+
+//	What the operating system's own functions know the process by.
+extern void* osProcessHandle();
+
+//	The path of the file which a module was loaded from; the module 0 is
+//	the program. Returns the length of the path, 0 if it is not known.
+extern unsigned long osModulePath(void* module, char* path, unsigned long size);
+
+extern bool osSetCurrentDirectory(const char* path);
+
+//	Leaves a mark by which another program can tell that the kernel is
+//	loaded in this process.
+extern void osMarkKernelLoaded();
+
+//
+//	The user. Each of these fills the buffer and returns true, or returns
+//	false if it cannot tell. The directories end with a separator.
+//
+extern bool osUserName(char* name, unsigned long size);
+extern bool osUserDirectory(char* path, unsigned long size);
+extern bool osUserDocumentsDirectory(char* path, unsigned long size);
 
 //	A message for whoever is debugging the kernel.
 extern void osDebugMessage(const char* message);

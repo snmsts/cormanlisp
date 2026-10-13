@@ -8,7 +8,7 @@
 //					entries in the registry.
 //
 
-#include "stdafx.h"
+#include "Stdafx.h"
 #include <windows.h>
 #include <ole2.h>
 #include <string.h>

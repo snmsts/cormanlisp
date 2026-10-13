@@ -28,14 +28,14 @@
 //                  
 //
 //
-#include "stdafx.h"
+#include "Stdafx.h"
 #include <setjmp.h>
 #include <assert.h>
 
-#include "generic.h"
-#include "lisp.h"
+#include "Generic.h"
+#include "Lisp.h"
 #include "compx86.h"
-#include "lispmath.h"
+#include "Lispmath.h"
 
 typedef LispObj LispObj;
 

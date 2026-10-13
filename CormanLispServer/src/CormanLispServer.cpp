@@ -10,14 +10,14 @@
 //							global UserInfo object.
 //
 
-#include "stdafx.h"
+#include "Stdafx.h"
 #include "ExceptionFrame.h"
 #include <process.h>
 #include <string.h>
 
 #include "CormanLispServer.h"
 #include "Host.h"
-#include "lisp.h"
+#include "Lisp.h"
 
 const UserInfo*          CurrentUserInfo    = 0;
 
@@ -46,11 +46,8 @@ void processAttach(HINSTANCE hInstance)
 	osSetThreadSlotValue(Thread_Index, 0);
 	osThreadSlotValue(QV_Index);
 	osThreadSlotValue(Thread_Index);
-	GetModuleFileName(hInstance, g_szFileName, MAX_PATH);
-
-	// create a named mutex that is used to determine if the
-	// Corman Lisp kernel is loaded
-	CreateMutex(NULL, FALSE, "CormanLispServer");
+	osModulePath(hInstance, g_szFileName, MAX_PATH);
+	osMarkKernelLoaded();
 
 	// setup the DLL directory
 	strcpy_s(CormanLispServerDirectory, sizeof(CormanLispServerDirectory), g_szFileName);
