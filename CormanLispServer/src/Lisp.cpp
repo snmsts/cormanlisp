@@ -15,6 +15,7 @@
 //                              means ct:c-string-to-lisp-string handles them correctly.
 //
 #include "stdafx.h"
+#include "ExceptionFrame.h"
 #include <stdlib.h>
 #include <setjmp.h>
 #include <string.h>
@@ -948,12 +949,9 @@ outputFileStreamNode(LispObj path)
 int
 lispmain()
 {
-	__try
 	{
+		ExceptionFrame frame(handleStructuredException);
 		LispLoop();
-	}
-	__except (handleStructuredException(GetExceptionCode(), GetExceptionInformation()))
-	{
 	}
 	exitLisp();
 	return 0;
@@ -962,12 +960,9 @@ lispmain()
 int
 lispSecondary(LispObj func)
 {
-	__try
 	{
+		ExceptionFrame frame(handleStructuredException);
 		LispCall1(Funcall, func);
-	}
-	__except (handleStructuredException(GetExceptionCode(), GetExceptionInformation()))
-	{
 	}
 	return 0;
 }

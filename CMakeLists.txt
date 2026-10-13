@@ -136,6 +136,7 @@ add_library(cormanlisp_kernel OBJECT
   "${_server}/src/CoEnumConnections.cpp"
   "${_server}/src/Compx86.cpp"
   "${_server}/src/CormanLispServer.cpp"
+  "${_server}/src/ExceptionFrame.cpp"
   "${_server}/src/Gc.cpp"
   "${_server}/src/Lisp.cpp"
   "${_server}/src/Lispfunc.cpp"
@@ -167,6 +168,9 @@ cormanlisp_runtime_target(CormanLispServer)
 
 add_library(CormanLispStatic STATIC $<TARGET_OBJECTS:cormanlisp_kernel>)
 target_link_libraries(CormanLispStatic INTERFACE ${_kernel_libs})
+# The kernel registers exception handlers of its own, which the table of
+# safe handlers would not know about.
+target_link_options(CormanLispStatic INTERFACE /SAFESEH:NO)
 
 #
 # Front ends which load CormanLispServer.dll.

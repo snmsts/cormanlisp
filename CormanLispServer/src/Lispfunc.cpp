@@ -9,6 +9,7 @@
 //					1/12/00 RGC Added EXECUTE_FINALIZERS to support post-GC finalization.
 //
 #include "stdafx.h"
+#include "ExceptionFrame.h"
 #include <io.h>
 #include <windows.h>
 #include <sys/timeb.h>
@@ -4832,13 +4833,9 @@ LispFunction(Lisp_Shutdown)
 volatile static LispObj doSafecall(LispObj func)
 {
 	LispObj res = NIL;
-	__try
 	{
+		ExceptionFrame frame(handleStructuredException);
 		res = LispCall1(Funcall, func);
-	}
-	__except (handleStructuredException(GetExceptionCode(), GetExceptionInformation()))
-	{
-
 	}
 	return res;
 }

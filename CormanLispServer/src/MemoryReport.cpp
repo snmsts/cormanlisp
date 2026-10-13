@@ -1080,10 +1080,7 @@ void dumpLispHeap(FILE* file, LispHeap* heap, char* name)
 void writeMemoryReport(void* address, CONTEXT* context)
 {
     FILE* file = 0;
-    int i = 0;
-    __try
     {
-        __try
         {
             ThreadList.suspendAllOtherThreadsWithoutLocking();
 
@@ -1191,7 +1188,6 @@ void writeMemoryReport(void* address, CONTEXT* context)
                             MB_OK);
 
         }
-        __finally
         {
             // resume all suspended threads
             ThreadList.resumeAllOtherThreads();
@@ -1202,14 +1198,6 @@ void writeMemoryReport(void* address, CONTEXT* context)
                 fclose(file);
             }
         }
-    }
-    __except (i)
-    {
-        // if the memory report task fails with a serious error, we need to abort
-        // the whole lisp process
-        char* msg = "A problem has occurred while writing the memory report.\n"
-                        "This is probably a serious problem, so the Lisp process will be closed down.\n";
-        CormanLispServer->LispShutdown(msg, strlen(msg));
     }
 }
 static struct MemReportParams

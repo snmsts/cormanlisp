@@ -29,6 +29,8 @@
 //							  getImageLoadsCount() function.
 //
 #include "stdafx.h"
+#include "ExceptionFrame.h"
+
 #include <wtypes.h>
 #include <memory.h>
 #include <windows.h>
@@ -1337,6 +1339,7 @@ void garbageCollect(long level)
     HWND wnd = 0;
     BOOL criticalSectionEntered = 0;
     int threadsSuspended = 0;
+    volatile int collecting = 0;
     unsigned char fpuState[108];
 
     // Lisp code keeps a floating point result on the FPU stack while it
@@ -1345,10 +1348,10 @@ void garbageCollect(long level)
 
     GCCriticalSection.Enter();
     
-   __try
     {
 
-        __try
+        ExceptionFrame frame(gcHandleStructuredException);
+        if (EXCEPTION_FRAME_ENTER(frame))
         {
 
             garbageCollectionID++;		// increment level
@@ -1395,7 +1398,7 @@ void garbageCollect(long level)
             QueryPerformanceCounter((LARGE_INTEGER*)&GCTime1);
 
             // suspend all threads but the current one
-            __try
+            collecting = 1;
             {
                 ThreadList.suspendAllOtherThreads();
                 threadsSuspended = 1;
@@ -1540,10 +1543,8 @@ void garbageCollect(long level)
 
                 releaseWeakPointers();
             }
-            __finally
-            {
-				GarbageEntry--;
-            }
+            collecting = 0;
+            GarbageEntry--;
 
             // These have been moved to outside the locked section--they can potentially
             // trigger another garbage collection, which is OK since they are moved here.
@@ -1557,10 +1558,14 @@ void garbageCollect(long level)
             if (symbolValue(HEAP_CHECKING) != NIL)
                 verifyHeapBlocks();
         }
-        __except (gcHandleStructuredException(GetExceptionCode(), GetExceptionInformation()))
+        else
         {
+            // what the abandoned collection had not got to
+            if (collecting)
+                GarbageEntry--;
             OutputDebugString("A structured exception occurred during garbage collection");
         }
+        frame.leave();
         
         // add garbage collection time
         QueryPerformanceCounter((LARGE_INTEGER*)&GCTime2);
@@ -1581,7 +1586,6 @@ void garbageCollect(long level)
         //	dumpHeapToFile(stringNode("heapdump.txt"));
         LispCall2(Funcall, FUNCALL, EXECUTE_FINALIZERS);		// if this triggers another GC, it's OK
     }
-    __finally
     {
          LeaveGCCriticalSection();
          if (threadsSuspended)
@@ -3419,9 +3423,8 @@ void readHeap(FILE* is)
     LispImageHeader header = {0};
     LispObj fp = 0;
 
-    __try
     {
-        __try
+        ExceptionFrame frame(handleStructuredException);
         {
             ThreadRecord* currThread = (ThreadRecord*)TlsGetValue(Thread_Index);
             LispObj* stackStart = currThread->stackStart;
@@ -3604,12 +3607,7 @@ void readHeap(FILE* is)
 			setSymbolValue(HEAP_1_GC_ID, 0);
 			setSymbolValue(HEAP_2_GC_ID, 0);
         }
-        __except (handleStructuredException(GetExceptionCode(), GetExceptionInformation()))
-        {
-            OutputDebugString("A structured exception occurred during the readHeap() call");
-        }
     }
-    __finally
     {
         FINALIZATION_REGISTRY = 0;
         GCExecRegistry = 0;
@@ -4278,7 +4276,8 @@ processEachHeapBlock(LispFunc func, LispObj processConses)
 static void
 resurrectFinalizationObjects(LispHeap* fromSpace, LispHeap* toSpace)
 {
-    __try
+    ExceptionFrame frame(gcHandleStructuredExceptionDuringFinalization);
+    if (EXCEPTION_FRAME_ENTER(frame))
     {
 
         // for each item in the finalization list, if it is still sitting
@@ -4345,7 +4344,7 @@ resurrectFinalizationObjects(LispHeap* fromSpace, LispHeap* toSpace)
 
         checkWeakPointers(fromSpace, toSpace);
     }
-    __except (gcHandleStructuredExceptionDuringFinalization(GetExceptionCode(), GetExceptionInformation()))
+    else
     {
         OutputDebugString("A structured exception occurred during garbage collection");
     }
@@ -4397,7 +4396,8 @@ checkWeakPointers(LispHeap* fromSpace, LispHeap* toSpace)
 static void
 releaseWeakPointers()
 {
-    __try
+    ExceptionFrame frame(gcHandleStructuredExceptionDuringFinalization);
+    if (EXCEPTION_FRAME_ENTER(frame))
     {
         LispObj newList = NIL;
         LispObj p = WEAK_PTR_REGISTRY;
@@ -4417,7 +4417,7 @@ releaseWeakPointers()
         }
         WEAK_PTR_REGISTRY = newList;
     }
-    __except (gcHandleStructuredExceptionDuringFinalization(GetExceptionCode(), GetExceptionInformation()))
+    else
     {
         OutputDebugString("A structured exception occurred during garbage collection");
     }
@@ -4448,7 +4448,8 @@ addFinalizationObject(LispObj obj, LispObj func)
 static void
 finalizeResurrectedObjects()
 {
-    __try
+    ExceptionFrame frame(gcHandleStructuredExceptionDuringFinalization);
+    if (EXCEPTION_FRAME_ENTER(frame))
     {
 
         LispObj pair = 0;
@@ -4466,7 +4467,7 @@ finalizeResurrectedObjects()
             delete temp;
         }
     }
-    __except (gcHandleStructuredExceptionDuringFinalization(GetExceptionCode(), GetExceptionInformation()))
+    else
     {
         OutputDebugString("A structured exception occurred during garbage collection");
     }

@@ -12,6 +12,7 @@
 
 #include <ws2tcpip.h>
 #include "stdafx.h"
+#include "ExceptionFrame.h"
 #include <process.h>
 #include <windows.h>
 #include <ole2.h>
@@ -650,7 +651,6 @@ extern "C" __declspec(dllexport) void UnblessThread()
 	ThreadRecord* th = (ThreadRecord*)TlsGetValue(Thread_Index);
 	TlsSetValue(Thread_Index, 0);
 	TlsSetValue(QV_Index, 0);
-    __try
     {
 	    if (th)
 	    {
@@ -667,10 +667,7 @@ extern "C" __declspec(dllexport) void UnblessThread()
  		    NumLispThreads--;
 	    }
     }
-    __finally
-    {
 	    GCCriticalSection.Leave();	// make sure garbage collection is not running
-    }
 }
 
 //
@@ -690,8 +687,8 @@ void* GetCallbackFunctionPointer(wchar_t* functionName, wchar_t* package)
 
 	// need to wrap this so page faults get handled during memory
 	// allocation
-	__try
 	{
+		ExceptionFrame frame(handleStructuredException);
 		FOREIGN_TO_LISP()
 
 		s = wstringNode(functionName);
@@ -708,9 +705,6 @@ void* GetCallbackFunctionPointer(wchar_t* functionName, wchar_t* package)
 		ret = LispCall3(Funcall, FUNCALL, GET_CALLBACK, sym);
 
 		LISP_RETURN_TO_FOREIGN()
-	}
-	__except (handleStructuredException(GetExceptionCode(), GetExceptionInformation()))
-	{
 	}
 
 	if (isForeignHeapPtr(ret) || isForeign(ret))
@@ -750,11 +744,13 @@ void AbortLispThread()
 
 	// make sure we don't abort a thread while it is performing a garbage collection!
 	GCCriticalSection.Enter();
-    __try
     {
 	    tr = ThreadList.getPrimaryThread();
 	    if (!tr)
+	    {
+		    GCCriticalSection.Leave();
 		    return;
+	    }
 	    th = tr->thread;
 	    user_abort = 1;
 	    SuspendThread(th);
@@ -774,10 +770,7 @@ void AbortLispThread()
 	    }
 	    ResumeThread(th);
     }
-    __finally
-    {
 	    GCCriticalSection.Leave();
-    }
 }
 
 static CONTEXT terminateContext;
