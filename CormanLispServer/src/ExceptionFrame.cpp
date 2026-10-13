@@ -152,7 +152,7 @@ void KernelThrow(unsigned long value)
 	KernelCatch* catcher = (KernelCatch*)osThreadSlotValue(KernelCatchIndex);
 	if (!catcher)
 	{
-		OutputDebugString("Error: a kernel error was raised with nothing to catch it!!\n");
+		osDebugMessage("Error: a kernel error was raised with nothing to catch it!!\n");
 		abort();
 	}
 	catcher->m_value = value;

@@ -109,3 +109,54 @@ void osSleep(unsigned long milliseconds)
 {
 	Sleep(milliseconds);
 }
+
+OsFile osOpenFile(const char* path, bool forWriting)
+{
+	return CreateFile(path,
+		forWriting ? GENERIC_WRITE : GENERIC_READ,
+		FILE_SHARE_READ,
+		NULL,
+		forWriting ? CREATE_ALWAYS : OPEN_EXISTING,
+		FILE_ATTRIBUTE_NORMAL,
+		NULL);
+}
+
+bool osCloseFile(OsFile file)
+{
+	return CloseHandle(file) != 0;
+}
+
+bool osReadFile(OsFile file, void* buffer, unsigned long size, unsigned long* sizeRead)
+{
+	return ReadFile(file, buffer, size, sizeRead, NULL) != 0;
+}
+
+bool osWriteFile(OsFile file, const void* buffer, unsigned long size, unsigned long* sizeWritten)
+{
+	return WriteFile(file, buffer, size, sizeWritten, NULL) != 0;
+}
+
+void* osLoadLibrary(const char* path)
+{
+	return LoadLibrary(path);
+}
+
+bool osFreeLibrary(void* library)
+{
+	return FreeLibrary((HMODULE)library) != 0;
+}
+
+void* osLibrarySymbol(void* library, const char* name)
+{
+	return (void*)GetProcAddress((HMODULE)library, name);
+}
+
+unsigned long osLastError()
+{
+	return GetLastError();
+}
+
+void osDebugMessage(const char* message)
+{
+	OutputDebugString(message);
+}

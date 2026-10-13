@@ -850,20 +850,13 @@ inputFileStreamNode(LispObj path)
 	LispObj bufLen = 0;
 	LispObj buf = 0;
 	LispObj s = 0;
-	HANDLE handle = 0;
+	OsFile handle = 0;
 	
-	handle = CreateFile(
-	(char*)byteArrayStart(nullTerminate(path)), // pointer to name of the file
-		GENERIC_READ,						 // access (read-write) mode
-		FILE_SHARE_READ,					 // share mode
-		NULL,								 // pointer to security descriptor
-		OPEN_EXISTING,						 // how to create
-		FILE_ATTRIBUTE_NORMAL,				 //	file attributes
-		NULL);								 // handle to file with attributes to copy
+	handle = osOpenFile((char*)byteArrayStart(nullTerminate(path)), false);
 
-	if (handle == INVALID_HANDLE_VALUE)
+	if (handle == OsNoFile)
 		Error("Could not open file ~A for reading, error code = ~A", 
-			path, createLispInteger(GetLastError()));
+			path, createLispInteger(osLastError()));
 
 	s = AllocVector(STREAM_SIZE);
 	setUvectorType(s, StreamType);
@@ -901,20 +894,13 @@ outputFileStreamNode(LispObj path)
 	LispObj bufLen = 0;
 	LispObj buf = 0;
 	LispObj s = 0;
-	HANDLE handle = 0;
+	OsFile handle = 0;
 	
-	handle = CreateFile(
-		(char*)byteArrayStart(nullTerminate(path)), // pointer to name of the file
-		GENERIC_WRITE,						 // access (read-write) mode
-		FILE_SHARE_READ,					 // share mode
-		NULL,								 // pointer to security descriptor
-		CREATE_ALWAYS,						 // how to create
-		FILE_ATTRIBUTE_NORMAL,				 //	file attributes
-		NULL);								 // handle to file with attributes to copy
+	handle = osOpenFile((char*)byteArrayStart(nullTerminate(path)), true);
 
-	if (handle == INVALID_HANDLE_VALUE)
+	if (handle == OsNoFile)
 		Error("Could not open file ~A for writing, error code = ~A", 
-			path, createLispInteger(GetLastError()));
+			path, createLispInteger(osLastError()));
 	
 	s = AllocVector(STREAM_SIZE);
 	setUvectorType(s, StreamType);
@@ -1054,7 +1040,7 @@ long handleStructuredException(long exception, LPEXCEPTION_POINTERS info)
 			ip = tranlateToOtherPrimaryHeap(ip); 
 			info->ContextRecord->Eip = (long)ip;
 			//DebugBreak();
-			OutputDebugString("Error: trying to execute code in the collected heap!!");
+			osDebugMessage("Error: trying to execute code in the collected heap!!");
 
 			return EXCEPTION_CONTINUE_EXECUTION;
 		}
@@ -2596,7 +2582,7 @@ LispObj popDynamicBinding(LispObj sym)
 	currBinding = ThreadQV()[integer(symbolVarTableIndex(sym))];
 	if (!isCons(currBinding) || !isCons(CDR(currBinding)))
 	{
-		OutputDebugString("Error: trying to pop a dynamic binding that doesn't exist!!");
+		osDebugMessage("Error: trying to pop a dynamic binding that doesn't exist!!");
 		//DebugBreak();
 		return NIL;
 	}

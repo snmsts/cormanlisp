@@ -77,4 +77,33 @@ extern unsigned long osMillisecondCount();
 
 extern void osSleep(unsigned long milliseconds);
 
+//
+//	Files, read or written from start to end
+//
+typedef void* OsFile;
+#define OsNoFile ((OsFile)-1)
+
+//	Opens an existing file for reading, or creates an empty one for
+//	writing in place of whatever had that name. Returns OsNoFile on failure.
+extern OsFile osOpenFile(const char* path, bool forWriting);
+extern bool osCloseFile(OsFile file);
+
+//	At the end of the file osReadFile() succeeds with nothing read.
+extern bool osReadFile(OsFile file, void* buffer, unsigned long size, unsigned long* sizeRead);
+extern bool osWriteFile(OsFile file, const void* buffer, unsigned long size, unsigned long* sizeWritten);
+
+//
+//	Libraries loaded while running
+//
+extern void* osLoadLibrary(const char* path);
+extern bool osFreeLibrary(void* library);
+extern void* osLibrarySymbol(void* library, const char* name);
+
+//	The operating system's code for why the last call to it by this
+//	thread failed.
+extern unsigned long osLastError();
+
+//	A message for whoever is debugging the kernel.
+extern void osDebugMessage(const char* message);
+
 #endif // OS_H

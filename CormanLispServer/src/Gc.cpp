@@ -117,8 +117,6 @@ struct PageTableEntry
 static void UnWriteProtectPage(ULONG32 page_id);
 static int growLispHeaps(long numCells);
 static void offsetUvector(LispObj obj, long offset, long length);
-static BYTE* MapFile(const char* path, DWORD* length);
-static void UnmapFile(BYTE* mapping);
 static void outputReferencedObject(FILE* file, LispObj obj, int indent);
 void* nextHeapObject(void* addr);
 
@@ -313,7 +311,7 @@ static void UnWriteProtectPage(ULONG32 page_id)
         ret = osProtectMemory(page_address(page_id), PAGE_SIZE, true);
         if (!ret)
         {
-            err = GetLastError();
+            err = osLastError();
         }
     }
 }
@@ -406,7 +404,7 @@ void LispHeap::writeProtectAllPages()
 		ret = osProtectMemory(page_address(firstPage), PAGE_SIZE * numPages, false);
 		if (!ret)
 		{
-			err = GetLastError();
+			err = osLastError();
 		}
 		else
 		{
@@ -427,7 +425,7 @@ void LispHeap::unWriteProtectAllPages()
 	ret = osProtectMemory(page_address(firstPage), PAGE_SIZE * numPages, true);
 	if (!ret)
 	{
-		err = GetLastError();
+		err = osLastError();
 	}
 	else
 	{
@@ -450,7 +448,7 @@ int LispHeap::decommitAllPages()
     firstUncommittedPage = firstPage;
     if (!ret)
     {
-        err = GetLastError();
+        err = osLastError();
         return 0;
     }
     return 1;
@@ -469,7 +467,7 @@ int LispHeap::commitAllPages()
                 PAGE_SIZE * (firstPage + numPages - firstUncommittedPage)) ? 1 : 0;
         if (!result)
         {
-            err = GetLastError();
+            err = osLastError();
         }
     }
     firstUncommittedPage = firstPage + numPages;
@@ -498,7 +496,7 @@ int LispHeap::commitPage(byte* addr, int readonly)
     firstUncommittedPage = newpage + 1;
     if (!ret)
     {
-        err = GetLastError();
+        err = osLastError();
         return 0;
     }
     else
@@ -531,7 +529,7 @@ int LispHeap::decommitTrailingPages()
     firstUncommittedPage = currpage + 1;
     if (!ret)
     {
-        err = GetLastError();
+        err = osLastError();
         return 0;
     }
 */
@@ -1559,7 +1557,7 @@ void garbageCollect(long level)
             // what the abandoned collection had not got to
             if (collecting)
                 GarbageEntry--;
-            OutputDebugString("A structured exception occurred during garbage collection");
+            osDebugMessage("A structured exception occurred during garbage collection");
         }
         frame.leave();
         
@@ -1976,7 +1974,7 @@ promoteExecutingFunctions()
         // We will always be in a lisp segment of the stack
         // because this thread called the garbage collector,
         // which will only be called from lisp code.
-        OutputDebugString("Error: Garbage collector called from foreign code!!");
+        osDebugMessage("Error: Garbage collector called from foreign code!!");
         //DebugBreak();
     }
 
@@ -2107,7 +2105,7 @@ static void recordObjectStarts(LispHeap* fromSpace)
             if (length == 0 || length > (unsigned long)(end - p))
             {
                 // This heap cannot be walked. What follows is trusted.
-                OutputDebugString("Error: Invalid uvector found while recording the heap objects!!\n");
+                osDebugMessage("Error: Invalid uvector found while recording the heap objects!!\n");
                 break;
             }
             UvectorStartBits[n >> 3] |= (1 << (n & 7));
@@ -2897,7 +2895,7 @@ promoteBlock(LispObj* ptr, LispHeap* toSpace)
         // rgc
         if (!((gettag(*pp) == UvectorLengthTag) && numNodes > 0 && numNodes <= MAX_CELLS_PER_ARRAY/2))
         {
-            OutputDebugString("Error: Invalid uvector detected by garbage collector!!\n");
+            osDebugMessage("Error: Invalid uvector detected by garbage collector!!\n");
             //DebugBreak();
         }
         //assert((gettag(*pp) == UvectorLengthTag)
@@ -4448,7 +4446,7 @@ resurrectFinalizationObjects(LispHeap* fromSpace, LispHeap* toSpace)
     }
     else
     {
-        OutputDebugString("A structured exception occurred during garbage collection");
+        osDebugMessage("A structured exception occurred during garbage collection");
     }
 }
 
@@ -4521,7 +4519,7 @@ releaseWeakPointers()
     }
     else
     {
-        OutputDebugString("A structured exception occurred during garbage collection");
+        osDebugMessage("A structured exception occurred during garbage collection");
     }
 }
 
@@ -4571,7 +4569,7 @@ finalizeResurrectedObjects()
     }
     else
     {
-        OutputDebugString("A structured exception occurred during garbage collection");
+        osDebugMessage("A structured exception occurred during garbage collection");
     }
 }
 
@@ -4639,54 +4637,6 @@ LispFunction(verifyHeapBlock)
 static void verifyHeapBlocks()
 {
     processEachHeapBlock(verifyHeapBlock, NIL);
-}
-
-static HANDLE MapFileFile = 0;
-static HANDLE MapFileMap = 0;
-
-static BYTE* MapFile(const char* path, DWORD* length)
-{
-    HANDLE hfile = CreateFile(path,
-                        GENERIC_READ | GENERIC_WRITE,
-                        FILE_SHARE_READ,
-                        NULL,
-                        OPEN_EXISTING,
-                        FILE_ATTRIBUTE_NORMAL,
-                        NULL);
-    if (hfile == INVALID_HANDLE_VALUE)
-        return 0;
-    *length = GetFileSize(hfile, 0);
-    if (*length == 0xffffffff)
-    {
-        CloseHandle(hfile);
-        return 0;
-    }
-
-    HANDLE hfilemap = CreateFileMapping(hfile,
-                        0,
-                        PAGE_READWRITE,
-                        0, 0,
-                        0);
-
-    //CloseHandle(hfile);
-    MapFileFile = hfile;  // close later
-    if (!hfilemap)
-        return 0;
-
-    BYTE* pbFile = (BYTE*)MapViewOfFile(hfilemap, FILE_MAP_READ, 0, 0, 0);
-    //CloseHandle(hfilemap);
-    MapFileMap = hfilemap; // close later
-    return pbFile;
-}
-
-static void UnmapFile(BYTE* mapping)
-{
-    FlushViewOfFile(mapping, 0);
-    UnmapViewOfFile(mapping);
-    if (MapFileFile)
-        CloseHandle(MapFileFile);
-    if (MapFileMap)
-        CloseHandle(MapFileMap);
 }
 
 //

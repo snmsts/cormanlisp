@@ -1182,10 +1182,10 @@ LispFunction(Close)
 				|| streamDirection(stream) == BIDIRECTIONAL_KEY)
 			flushStream(stream);
 
-		retval = CloseHandle((void*)lispIntegerToLong(streamHandle(stream)));
+		retval = osCloseFile((OsFile)lispIntegerToLong(streamHandle(stream)));
 		if (!retval)
 			Error("Could not close file ~A, error code = ~A", 
-				stream, createLispInteger(GetLastError()));
+				stream, createLispInteger(osLastError()));
 		streamOpen(stream) = NIL;
 	}
 
@@ -1635,23 +1635,16 @@ LispFunction(Probe_File)
 {
 	LISP_FUNC_BEGIN(1);
 	LispObj path = LISP_ARG(0);
-	HANDLE handle = 0;
+	OsFile handle = 0;
 	checkString(path);
 	
-	handle = CreateFile(
-		(char*)byteArrayStart(nullTerminate(path)), // pointer to name of the file
-		GENERIC_READ,						 // access (read-write) mode
-		FILE_SHARE_READ,					 // share mode
-		NULL,								 // pointer to security descriptor
-		OPEN_EXISTING,						 // how to create
-		FILE_ATTRIBUTE_NORMAL,				 //	file attributes
-		NULL);								 // handle to file with attributes to copy
+	handle = osOpenFile((char*)byteArrayStart(nullTerminate(path)), false);
 
-	if (handle == INVALID_HANDLE_VALUE)
+	if (handle == OsNoFile)
 		ret = NIL;
 	else
 	{
-		CloseHandle(handle);
+		osCloseFile(handle);
 		ret = T;
 	}
 	LISP_FUNC_RETURN(ret);
@@ -2840,12 +2833,12 @@ LispFunction(Load_DLL)
 {
 	LISP_FUNC_BEGIN(1);
 	LispObj path = LISP_ARG(0);
-	HINSTANCE handle = 0;
+	void* handle = 0;
 	checkString(path);
-	handle = LoadLibrary((char*)byteArrayStart(nullTerminate(path)));
+	handle = osLoadLibrary((char*)byteArrayStart(nullTerminate(path)));
 	if (!handle)	
 		Error("Could not load requested DLL: ~A, error code = ~A", path,
-			createLispInteger(GetLastError()));
+			createLispInteger(osLastError()));
 	ret = createLispInteger((long)handle);
 	LISP_FUNC_RETURN(ret);
 }
@@ -2858,21 +2851,21 @@ LispFunction(Unload_DLL)
 {
 	LISP_FUNC_BEGIN(1);
 	LispObj dll_handle = LISP_ARG(0);
-	HMODULE module = 0;
-	BOOL r = 0;
+	void* module = 0;
+	bool r = false;
 	checkLispInteger(dll_handle);
 	if (isBignum(dll_handle))
 	{
-		module = (HMODULE)UVECTOR(dll_handle)[BIGNUM_FIRST_CELL];
+		module = (void*)UVECTOR(dll_handle)[BIGNUM_FIRST_CELL];
 		if (bignumNegative(dll_handle))
-			module = (HMODULE)-((long)module);
+			module = (void*)-((long)module);
 	}
 	else
-		module = (HMODULE)integer(dll_handle);
-	r = FreeLibrary(module);
+		module = (void*)integer(dll_handle);
+	r = osFreeLibrary(module);
 	if (!r)	
 		Error("Could not unload requested DLL handle: ~A, error code = ~A", dll_handle,
-			createLispInteger(GetLastError()));
+			createLispInteger(osLastError()));
 	LISP_FUNC_RETURN(NIL);
 }
 
@@ -2885,25 +2878,25 @@ LispFunction(Get_DLL_Proc_Address)
 	LISP_FUNC_BEGIN(2);
 	LispObj procname = LISP_ARG(0);
 	LispObj dll_handle = LISP_ARG(1);
-	HMODULE module = 0;
-	FARPROC proc = 0;
+	void* module = 0;
+	void* proc = 0;
 	LispObj fp = 0;
 	fp = foreignNode();
 	checkString(procname);
 	checkLispInteger(dll_handle);
 	if (isBignum(dll_handle))
 	{
-		module = (HMODULE)UVECTOR(dll_handle)[BIGNUM_FIRST_CELL];
+		module = (void*)UVECTOR(dll_handle)[BIGNUM_FIRST_CELL];
 		if (bignumNegative(dll_handle))
-			module = (HMODULE)-((long)module);
+			module = (void*)-((long)module);
 	}
 	else
-		module = (HMODULE)integer(dll_handle);
+		module = (void*)integer(dll_handle);
 
-	proc = GetProcAddress(module, (char*)byteArrayStart(nullTerminate(procname))); 
+	proc = osLibrarySymbol(module, (char*)byteArrayStart(nullTerminate(procname))); 
 	if (!proc)
 		Error("Could not find the procedure ~A, error code = ~A", procname,
-			createLispInteger(GetLastError()));
+			createLispInteger(osLastError()));
 	UVECTOR(fp)[FOREIGN_PTR] = (LispObj)proc;
 	ret = fp;
 	LISP_FUNC_RETURN(ret);
@@ -3160,7 +3153,7 @@ LispFunction(System_Time_To_File_Time)
 	result = SystemTimeToFileTime(&time, &ftime);
 	if (!result)
 		Error("SystemTimeToFileTime() failed, error code: ", 
-			createLispInteger(GetLastError()));
+			createLispInteger(osLastError()));
 
 	if (ftime.dwHighDateTime == 0)
 		ret = createLispInteger(ftime.dwLowDateTime);
@@ -3194,7 +3187,7 @@ LispFunction(File_Time_To_System_Time)
 	result = FileTimeToSystemTime(&ftime, &time);
 	if (!result)
 		Error("SystemTimeToFileTime() failed, error code: ",
-			createLispInteger(GetLastError()));
+			createLispInteger(osLastError()));
 	ret = list(wrapInteger(time.wYear),
 			   wrapInteger(time.wMonth),
 			   wrapInteger(time.wDayOfWeek),

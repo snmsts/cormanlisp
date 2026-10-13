@@ -521,12 +521,8 @@ fileOverflow(LispObj s)
 		for (i = 0; i < integer(bytesToWrite); i++)
 			ByteOverflowBuffer[i] = byteArrayStart(buf)[i];
 		numBytes = integer(bytesToWrite);
-		ret = WriteFile(
-			(void*)lispIntegerToLong(streamHandle(s)),	// handle of file to write 
-			ByteOverflowBuffer,							// address of buffer that contains data
-			numBytes,									// number of bytes to write
-			&charsWritten,								// address of number of bytes write
-			NULL);										// overlapped structure
+		ret = osWriteFile((OsFile)lispIntegerToLong(streamHandle(s)),
+			ByteOverflowBuffer, numBytes, &charsWritten);
 		delete [] ByteOverflowBuffer;
 	}
 	else
@@ -537,18 +533,14 @@ fileOverflow(LispObj s)
 		ByteOverflowBuffer = (byte*)CharOverflowBuffer;
 		for (int i = 0; i < numBytes; i++)
 			ByteOverflowBuffer[i] = ByteOverflowBuffer[i * 2];	// convert from 16-bit to 8-bit chars
-		ret = WriteFile(
-			(void*)lispIntegerToLong(streamHandle(s)),	// handle of file to write 
-			ByteOverflowBuffer,							// address of buffer that contains data
-			numBytes,									// number of bytes to write
-			&charsWritten,								// address of number of bytes write
-			NULL);										// overlapped structure
+		ret = osWriteFile((OsFile)lispIntegerToLong(streamHandle(s)),
+			ByteOverflowBuffer, numBytes, &charsWritten);
 		delete [] CharOverflowBuffer;
 	}
 
 	if (!ret)
 		Error("Could not write to file ~A, error code = ~A", 
-			s, createLispInteger(GetLastError()));
+			s, createLispInteger(osLastError()));
 
 	streamOutputBufferPos(s) = 0;
 	return bytesToWrite;

@@ -1071,16 +1071,12 @@ LispObj fileUnderflow(LispObj s)
 	charArrayStart(streamInputBuffer(s))[0] = 0;
 	charArrayStart(streamInputBuffer(s))[2047] = 0;
 
-	ret = ReadFile(
-		(void*)lispIntegerToLong(streamHandle(s)),	// handle of file to read 
-		InputUnderflowBuffer,						// address of buffer that receives data
-		integer(streamInputBufferLength(s)),		// number of bytes to read
-		&charsRead,								// address of number of bytes read
-		NULL);									// overlapped structure
+	ret = osReadFile((OsFile)lispIntegerToLong(streamHandle(s)),
+		InputUnderflowBuffer, integer(streamInputBufferLength(s)), &charsRead);
 
 	if (!ret)
 		Error("Could not read from file ~A, error code = ~A", 
-			s, createLispInteger(GetLastError()));
+			s, createLispInteger(osLastError()));
 
 	if (streamBinary(s) == NIL)		// if character stream, remove CR characters
 	{
