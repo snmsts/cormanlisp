@@ -466,7 +466,8 @@ loadFile(LispObj inputStream)
 
 	while (1)
 	{
-		try
+		KernelCatch catcher;
+		if (KERNEL_CATCH_ENTER(catcher))
 		{
 			setSymbolValue(SOURCE_LINE, NIL);
 			x = LispCall5(Funcall, symbolFunction(READ), inputStream, NIL, Eof, NIL);
@@ -474,11 +475,11 @@ loadFile(LispObj inputStream)
 				break;
 			val = eval(x, NIL);
 		}
-		catch (LispObj)
+		else
 		{
 			LispCall1(Close, inputStream);
 			LispCall2(Write, stringNode("An error occurred while loading.\n"), outputStream);
-			throw;
+			KernelThrow(catcher.m_value);
 		}
 		count++;		
 	}
@@ -1341,7 +1342,7 @@ LispFunction(LispError)
 	strcpy_s(errbuf, sizeof(errbuf), errorStart);
 	strncat_s(errbuf, sizeof(errbuf), (char*)byteArrayStart(nullTerminate(msg)), 
 			errbufSize - strlen(errorStart) - 1);
-	throw stringNode(errbuf);
+	KernelThrow(stringNode(errbuf));
 
 	LISP_FUNC_RETURN(NIL);		// never gets here
 }

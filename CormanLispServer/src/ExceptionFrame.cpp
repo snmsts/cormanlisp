@@ -4,14 +4,56 @@
 //		-------------------------------
 //
 //		File:		ExceptionFrame.cpp
-//		Contents:	Operating system exception handling for a block of
-//					code, without the compiler's __try and __except.
+//		Contents:	Operating system exceptions and non-local exits in the
+//					kernel, without the compiler's __try, __except and
+//					throw.
 //
 
 #include "stdafx.h"
 #include <stddef.h>
+#include <stdlib.h>
 
 #include "ExceptionFrame.h"
+
+//	EnterJumpContext() and ResumeJumpContext() address the members by number.
+static char contextLayout[
+	offsetof(JumpContext, m_eip) == 0 && offsetof(JumpContext, m_esp) == 4 &&
+	offsetof(JumpContext, m_ebp) == 8 && offsetof(JumpContext, m_ebx) == 12 &&
+	offsetof(JumpContext, m_esi) == 16 && offsetof(JumpContext, m_edi) == 20 ? 1 : -1];
+
+__declspec(naked) int __cdecl EnterJumpContext(JumpContext* context)
+{
+	__asm
+	{
+		mov		eax, [esp + 4]		;; eax = context
+		mov		edx, [esp]
+		mov		[eax], edx			;; the address to return to
+		lea		edx, [esp + 4]
+		mov		[eax + 4], edx		;; esp after the return
+		mov		[eax + 8], ebp
+		mov		[eax + 12], ebx
+		mov		[eax + 16], esi
+		mov		[eax + 20], edi
+		mov		eax, 1
+		ret
+	}
+}
+
+__declspec(naked) void __cdecl ResumeJumpContext(JumpContext* context)
+{
+	__asm
+	{
+		mov		eax, [esp + 4]		;; eax = context
+		mov		edx, [eax]
+		mov		ebp, [eax + 8]
+		mov		ebx, [eax + 12]
+		mov		esi, [eax + 16]
+		mov		edi, [eax + 20]
+		mov		esp, [eax + 4]
+		xor		eax, eax
+		jmp		edx
+	}
+}
 
 //	The head of the thread's list of exception handlers, fs:[0].
 static EXCEPTION_REGISTRATION_RECORD*& exceptionList()
@@ -34,13 +76,13 @@ exceptionFrameHandler(EXCEPTION_RECORD* record, void* registration, CONTEXT* con
 		return ExceptionContinueExecution;
 	if (action == EXCEPTION_EXECUTE_HANDLER)
 	{
-		// resume as if EnterExceptionFrame() had just returned 0
-		context->Eip = frame->m_eip;
-		context->Esp = frame->m_esp;
-		context->Ebp = frame->m_ebp;
-		context->Ebx = frame->m_ebx;
-		context->Esi = frame->m_esi;
-		context->Edi = frame->m_edi;
+		// resume as if EnterJumpContext() had just returned 0
+		context->Eip = frame->m_context.m_eip;
+		context->Esp = frame->m_context.m_esp;
+		context->Ebp = frame->m_context.m_ebp;
+		context->Ebx = frame->m_context.m_ebx;
+		context->Esi = frame->m_context.m_esi;
+		context->Edi = frame->m_context.m_edi;
 		context->Eax = 0;
 		return ExceptionContinueExecution;
 	}
@@ -50,7 +92,7 @@ exceptionFrameHandler(EXCEPTION_RECORD* record, void* registration, CONTEXT* con
 ExceptionFrame::ExceptionFrame(ExceptionFilter filter)
 {
 	m_filter = filter;
-	m_eip = 0;
+	m_context.m_eip = 0;
 	m_record.Handler = (PEXCEPTION_ROUTINE)exceptionFrameHandler;
 	m_record.Next = exceptionList();
 	exceptionList() = &m_record;
@@ -77,26 +119,44 @@ void ExceptionFrame::abandoned()
 	exceptionList() = &m_record;
 }
 
-//	EnterExceptionFrame() below addresses the members by number.
-static char frameLayout[
-	offsetof(ExceptionFrame, m_eip) == 12 && offsetof(ExceptionFrame, m_esp) == 16 &&
-	offsetof(ExceptionFrame, m_ebp) == 20 && offsetof(ExceptionFrame, m_ebx) == 24 &&
-	offsetof(ExceptionFrame, m_esi) == 28 && offsetof(ExceptionFrame, m_edi) == 32 ? 1 : -1];
+//	The innermost KernelCatch of each thread.
+static DWORD KernelCatchIndex = TlsAlloc();
 
-__declspec(naked) int __cdecl EnterExceptionFrame(ExceptionFrame* frame)
+KernelCatch::KernelCatch()
 {
-	__asm
+	m_value = 0;
+	m_context.m_eip = 0;
+	m_handlers = exceptionList();
+	m_next = (KernelCatch*)TlsGetValue(KernelCatchIndex);
+	TlsSetValue(KernelCatchIndex, this);
+	m_registered = true;
+}
+
+KernelCatch::~KernelCatch()
+{
+	leave();
+}
+
+void KernelCatch::leave()
+{
+	if (m_registered)
 	{
-		mov		eax, [esp + 4]		;; eax = frame
-		mov		edx, [esp]
-		mov		[eax + 12], edx		;; the address to return to
-		lea		edx, [esp + 4]
-		mov		[eax + 16], edx		;; esp after the return
-		mov		[eax + 20], ebp
-		mov		[eax + 24], ebx
-		mov		[eax + 28], esi
-		mov		[eax + 32], edi
-		mov		eax, 1
-		ret
+		TlsSetValue(KernelCatchIndex, m_next);
+		m_registered = false;
 	}
+}
+
+void KernelThrow(unsigned long value)
+{
+	KernelCatch* catcher = (KernelCatch*)TlsGetValue(KernelCatchIndex);
+	if (!catcher)
+	{
+		OutputDebugString("Error: a kernel error was raised with nothing to catch it!!\n");
+		abort();
+	}
+	catcher->m_value = value;
+
+	// The catchers and the exception handlers set up since are abandoned.
+	exceptionList() = catcher->m_handlers;
+	ResumeJumpContext(&catcher->m_context);
 }

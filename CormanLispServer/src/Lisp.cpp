@@ -1083,7 +1083,8 @@ void LispLoop()
 
 	while (1)
 	{
-		try
+		KernelCatch catcher;
+		if (KERNEL_CATCH_ENTER(catcher))
 		{
 			if (firstTime)
 			{
@@ -1102,7 +1103,7 @@ void LispLoop()
 					LispCall1(LoadLispImage, stringNode(LispImageName));
 				}
 				else
-					throw stringNode("");	// ignorable message
+					KernelThrow(stringNode(""));	// ignorable message
 				x = 0;
 				val = 0;
 				vals = 0;
@@ -1135,8 +1136,10 @@ void LispLoop()
 			else
 				LispCall1(Force_Output, symbolValue(STANDARD_OUTPUT));
 		}
-		catch (LispObj x)
+		else
 		{
+			LispObj x = catcher.m_value;
+
 			// This is just to make sure that the initialization is flagged
 			// as done in case LOAD-IMAGE threw an exception. We don't want other
 			// threads to keep waiting in this case.
