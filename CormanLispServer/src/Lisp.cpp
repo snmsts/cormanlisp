@@ -26,7 +26,6 @@
 
 #include "Lisp.h"
 #include "threadclasses.h"
-#include "ErrorMessage.h"
 #include "CormanLispServer.h"
 #include "Host.h"
 #include "Version.h"

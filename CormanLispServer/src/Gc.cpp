@@ -3182,6 +3182,7 @@ static FILE* openWriteEXE(LispObj path)
     return f;
 }
 
+#ifdef _WIN32
 #define SizeOfNtSignature 4
 #define PaddedSize(n) ((n) % PAGE_SIZE ? (n) + (PAGE_SIZE - ((n) % PAGE_SIZE)) : (n))
 IMAGE_SECTION_HEADER LispSectionHeader = { 0 };
@@ -3317,6 +3318,19 @@ static int finishEXE(FILE* exe, char* sectionName)
     fclose(exe);
     return 1;
 }
+#else
+//	The executable files of this system cannot hold a section of Lisp yet.
+static FILE* openReadEXE(LispObj path, char* sectionName)
+{
+    return 0;
+}
+
+static int finishEXE(FILE* exe, char* sectionName)
+{
+    fclose(exe);
+    return 0;
+}
+#endif
 
 //
 //	If the file exists, and has a .EXE extension, add the heap

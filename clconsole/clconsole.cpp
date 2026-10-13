@@ -9,29 +9,27 @@
 //		Created:	3/6/98
 //
 
-#include <windows.h>
-#include <shellapi.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <conio.h>
-#include <fcntl.h>
-#include <io.h>
 
-#include "ErrorMessage.h"
 #include "CormanLispHost.h"
 
-static char gModuleName[MAX_PATH];
-static char gImageName [MAX_PATH];
-bool isTemplateApp = false;
+//	What differs from one operating system to another is at the end.
+static bool loadKernel();
+static void prepareConsole();
+static void getModulePath(char* path, unsigned long size);
+static long openURL(const char* url);
+static void sleepMilliseconds(unsigned long milliseconds);
+static bool sameIgnoringCase(const char* a, const char* b);
+extern const char* const consoleAppName;
 
-const char SERVER_TITLE[] = "CormanLispServer.dll";
-char LispServerPath[MAX_PATH + 1 + sizeof(SERVER_TITLE)];
+static char gModuleName[260];
+static char gImageName [260];
+bool isTemplateApp = false;
 
 static void outputConsoleText(char* text);
 static char* getConsoleText();
-static HINSTANCE getLocalCormanLispServer();
-static bool loadKernel();
 static void LoadFile(char* filename);
 
 //	The functions of the kernel, found in it once it has been loaded.
@@ -64,7 +62,14 @@ static void consoleShutdown(void* /*context*/, const char* text, long numBytes)
 
 static long consoleOpenURL(void* /*context*/, const char* file, void** /*window*/)
 {
-	return (ShellExecuteA(NULL, "open", file, NULL, NULL, SW_SHOWNORMAL) > (HINSTANCE)32 ? 0 : -1);
+	return openURL(file);
+}
+
+//	Control-C and its like: Lisp stops what it is doing.
+static void interruptLisp()
+{
+	if (kernelRunning && KernelNumThreads() > 0)
+		KernelAbortThread();
 }
 
 char* execFile = 0;
@@ -72,7 +77,7 @@ char* execFile = 0;
 int mainx(int argc, char* argv[])
 {
 	if (!loadKernel())
-		return FALSE;
+		return 0;
 
 	CormanLispHost host = { 0 };
 	host.outputText = consoleOutputText;
@@ -82,14 +87,13 @@ int mainx(int argc, char* argv[])
 	if (!KernelInitialize(&host, gImageName, CORMANLISP_CONSOLE_CLIENT))
 	{
 		fprintf(stderr, "The Lisp kernel could not be initialized");
-		return FALSE;
+		return 0;
 	}
 	kernelRunning = true;
 
 	void* thread = 0;
 	KernelRun(&thread);
 
-	long numThreads = 0;
 	char* input = 0;
 	bool quitting = false;
 	if (execFile)
@@ -100,7 +104,7 @@ int mainx(int argc, char* argv[])
 	}
 	/*
 	else
-	{	
+	{
 		if (!isTemplateApp)	// if the plain console app, put out this message
 			outputConsoleText("Type :quit to exit.\r\n");
 	}
@@ -111,7 +115,7 @@ int mainx(int argc, char* argv[])
 			input = getConsoleText();
 		if (strlen(input) > 0)
 		{
-			if (!_stricmp(input, ":quit\r\n"))
+			if (sameIgnoringCase(input, ":quit\r\n") || sameIgnoringCase(input, ":quit\n"))
 				break;
 			if (!quitting)
 				KernelProcessSource(input, strlen(input));
@@ -129,11 +133,157 @@ int mainx(int argc, char* argv[])
 			char exitCommand[] = "(win:ExitProcess 0) \n #< expression not finished > \n (win:ExitProcess 0)\n";
 			quitting = true;
 			KernelProcessSource(exitCommand, sizeof(exitCommand));
-			Sleep(1000);
+			sleepMilliseconds(1000);
 		}
 	}
 	return 0;
 }
+
+int main(int argc, char* argv[])
+{
+	prepareConsole();
+	getModulePath(gModuleName, sizeof(gModuleName));
+
+	isTemplateApp = !sameIgnoringCase(argv[0], "clconsole");	// see if this app is being used
+															// as a template
+
+	char* imageName = 0;
+	for (int i = 1; i < argc; i++)
+	{
+		if (sameIgnoringCase(argv[i], "-image") && (i + 1) < argc)
+		{
+			imageName = argv[i+1];
+		}
+		if (sameIgnoringCase(argv[i], "-execute") && (i + 1) < argc)
+		{
+			execFile = argv[i+1];
+		}
+	}
+	if (imageName)
+		snprintf(gImageName, sizeof(gImageName), "%s", imageName);
+	else
+			// default to the image has the same name as the executable,
+			// but with a .img extension.
+	{
+		// as a special case, if this is the clconsole application
+		// default to CormanLisp.img
+		unsigned int moduleNameLength = strlen(gModuleName);
+		if (moduleNameLength >= strlen(consoleAppName)
+			&& sameIgnoringCase(gModuleName + (moduleNameLength - strlen(consoleAppName)),
+					consoleAppName))
+        {
+            // the path of the exe, with CormanLisp.img in place of its name
+            snprintf(gImageName, sizeof(gImageName), "%.*s%s",
+                (int)(moduleNameLength - strlen(consoleAppName)), gModuleName, "CormanLisp.img");
+        }
+		else
+		{
+			snprintf(gImageName, sizeof(gImageName), "%s", gModuleName);
+		}
+	}
+	mainx(0, 0);
+	return 0;
+}
+
+//	If an entire line has been entered, return it.
+//	Otherwise return an empty string.
+//
+char ConsoleTextBuf[4096];
+static char* s = ConsoleTextBuf;
+
+static void outputConsoleText(char* text)
+{
+	char* p = text;
+	while (*p)
+	{
+		putchar(*p++);
+	}
+}
+
+static char* getConsoleText()
+{
+	while (1)
+	{
+		int c = getchar();
+
+		if (c == EOF)
+		{
+		//	*s++ = 0;
+		//	s = ConsoleTextBuf;
+		//	return s;
+		}
+		else
+		if (c == 10)
+		{
+			*s++ = (char)c;
+			*s++ = 0;
+			s = ConsoleTextBuf;
+			return s;
+		}
+		else
+			*s++ = (char)c;
+	}
+}
+
+static void LoadFile(char* filename)
+{
+	char* ext = filename + strlen(filename);
+	while (ext > filename && *ext != '.')
+		ext--;
+	if (*ext == '.' && sameIgnoringCase(ext, ".fasl"))
+	{
+		// load a compiled file
+		char command[512];
+		snprintf(command, sizeof(command), "(common-lisp:load #P\"%s\")", filename);
+		KernelProcessSource(command, strlen(command));
+		return;
+	}
+
+	// load the file into memory
+	FILE* file = fopen(filename, "rb");
+	long fileSize = 0;
+	char* data = 0;
+	if (file)
+	{
+		fseek(file, 0, SEEK_END);
+		fileSize = ftell(file);
+		fseek(file, 0, SEEK_SET);
+		if (fileSize >= 0)
+			data = (char*)malloc(fileSize + 1);
+		if (data && fread(data, 1, fileSize, file) != (size_t)fileSize)
+		{
+			free(data);
+			data = 0;
+		}
+		fclose(file);
+	}
+
+	if (!data)
+	{
+		fprintf(stderr, "Error: Could not open file %s.\n", filename);
+		return;
+	}
+
+	// process code in the file
+	KernelProcessSource(data, fileSize);
+
+	free(data);
+}
+
+#ifdef _WIN32
+
+#include <windows.h>
+#include <shellapi.h>
+#include <conio.h>
+#include <fcntl.h>
+#include <io.h>
+
+#include "ErrorMessage.h"
+
+const char* const consoleAppName = "CLCONSOLE.EXE";
+
+static const char SERVER_TITLE[] = "CormanLispServer.dll";
+static char LispServerPath[MAX_PATH + 1 + sizeof(SERVER_TITLE)];
 
 //
 //	If a CormanLispServer.dll exists in the same directory as
@@ -177,29 +327,14 @@ static bool loadKernel()
 	return true;
 }
 
-long numThreads = 0;
-
-BOOL __stdcall HandlerRoutine(DWORD dwCtrlType)
+static BOOL __stdcall HandlerRoutine(DWORD dwCtrlType)
 {
 	BOOL handled = FALSE;
 	switch (dwCtrlType)
 	{
 	case CTRL_C_EVENT:
-		if (kernelRunning)
-		{
-			numThreads = KernelNumThreads();
-			if (numThreads > 0)
-				KernelAbortThread();
-		}
-		handled = TRUE;
-		break;
 	case CTRL_BREAK_EVENT:
-		if (kernelRunning)
-		{
-			numThreads = KernelNumThreads();
-			if (numThreads > 0)
-				KernelAbortThread();
-		}
+		interruptLisp();
 		handled = TRUE;
 		break;
 	case CTRL_CLOSE_EVENT:
@@ -212,15 +347,13 @@ BOOL __stdcall HandlerRoutine(DWORD dwCtrlType)
 	return handled;
 }
 
-const char* consoleAppName = "CLCONSOLE.EXE";
-
-int main(int argc, char* argv[])
+static void prepareConsole()
 {
 	// use binary mode
-	int result = _setmode(_fileno(stdout), _O_BINARY);
-	result = _setmode(_fileno(stdin), _O_BINARY);
+	_setmode(_fileno(stdout), _O_BINARY);
+	_setmode(_fileno(stdin), _O_BINARY);
 
-	BOOL ret = SetConsoleCtrlHandler(HandlerRoutine, TRUE);
+	SetConsoleCtrlHandler(HandlerRoutine, TRUE);
 	SetConsoleTitle("Corman Lisp Console");
 #ifdef SET_CONSOLE_SCREEN_BUFFER_SIZE
 	HANDLE handle = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -229,157 +362,80 @@ int main(int argc, char* argv[])
 	coord.Y = 100;		// default console size if 100 x 100
 	SetConsoleScreenBufferSize(handle, coord);
 #endif // SET_CONSOLE_SCREEN_BUFFER_SIZE
-	GetModuleFileName(0, gModuleName, sizeof(gModuleName));
-
-	isTemplateApp = _stricmp(argv[0], "clconsole") != 0;	// see if this app is being used
-															// as a template
-
-	char* imageName = 0;
-	for (int i = 1; i < argc; i++)
-	{
-		if (!_stricmp(argv[i], "-image") && (i + 1) < argc)
-		{
-			imageName = argv[i+1];
-		}
-		if (!_stricmp(argv[i], "-execute") && (i + 1) < argc)
-		{
-			execFile = argv[i+1];
-		}
-	}
-	if (imageName)
-		strcpy_s(gImageName, sizeof(gImageName), imageName);
-	else
-			// default to the image has the same name as the executable,
-			// but with a .img extension.
-	{
-		// as a special case, if this is the clconsole application 
-		// default to CormanLisp.img
-		unsigned int moduleNameLength = strlen(gModuleName);
-		if (moduleNameLength >= strlen(consoleAppName)
-			&& !_stricmp(gModuleName + (moduleNameLength - strlen(consoleAppName)), 
-					consoleAppName))
-        {
-            // copy entire exe path and name
-            strcpy_s(gImageName, sizeof(gImageName), gModuleName);
-            // replace clconsole.exe with cormanlisp.img
-			strcpy_s(gImageName + (moduleNameLength - strlen(consoleAppName)), sizeof(gImageName), "CormanLisp.img");
-        }
-		else
-		{
-			strcpy_s(gImageName, sizeof(gImageName), gModuleName);
-		}
-	}
-	static char szAppName[] = "CormanLispConsole" ;
-	mainx(0, 0);
-	return 0;
 }
 
-//	If an entire line has been entered, return it.
-//	Otherwise return an empty string.
-//
-char ConsoleTextBuf[4096];
-static char* s = ConsoleTextBuf;
-
-static void outputConsoleText(char* text)
+static void getModulePath(char* path, unsigned long size)
 {
-	char* p = text;
-	while (*p)
-	{
-		putchar(*p++);
-	}
+	GetModuleFileName(0, path, size);
 }
 
-static char* getConsoleText()
+static long openURL(const char* url)
 {
-	while (1)
-	{
-		int c = getchar();
-	
-		if (c == EOF)
-		{
-		//	*s++ = 0;
-		//	s = ConsoleTextBuf; 
-		//	return s;
-		}
-		else
-		if (c == 10)
-		{
-			*s++ = (char)c;
-			*s++ = 0;
-			s = ConsoleTextBuf; 
-			return s;
-		}
-		else
-			*s++ = (char)c;
-	}
+	return (ShellExecuteA(NULL, "open", url, NULL, NULL, SW_SHOWNORMAL) > (HINSTANCE)32 ? 0 : -1);
 }
 
-BYTE* MapFile(const char* path, DWORD* length)
+static void sleepMilliseconds(unsigned long milliseconds)
 {
-	HANDLE hfile = CreateFile(path,
-						GENERIC_READ,
-						FILE_SHARE_READ,
-						NULL,
-						OPEN_EXISTING,
-						FILE_ATTRIBUTE_NORMAL,
-						NULL);
-	if (hfile == INVALID_HANDLE_VALUE)
-		return 0;
-	*length = GetFileSize(hfile, 0);
-	if (*length == 0xffffffff)
-	{
-		CloseHandle(hfile);
-		return 0;
-	}
-
-	HANDLE hfilemap = CreateFileMapping(hfile,
-						0,
-						PAGE_READONLY,
-						0, 0,
-						0);
-
-	CloseHandle(hfile);
-	if (!hfilemap)
-		return 0;
-
-	BYTE* pbFile = (BYTE*)MapViewOfFile(hfilemap, FILE_MAP_READ, 0, 0, 0);
-	CloseHandle(hfilemap);
-	return pbFile;
+	Sleep(milliseconds);
 }
 
-void UnmapFile(BYTE* mapping)
+static bool sameIgnoringCase(const char* a, const char* b)
 {
-	UnmapViewOfFile(mapping);
+	return _stricmp(a, b) == 0;
 }
 
-static void LoadFile(char* filename)
+#else
+
+#include <signal.h>
+#include <strings.h>
+#include <time.h>
+#include <unistd.h>
+
+const char* const consoleAppName = "cormanlisp";
+
+//	The kernel is part of this program.
+static bool loadKernel()
 {
-	char* ext = filename + strlen(filename);
-	while (ext > filename && *ext != '.')
-		ext--;
-	if (*ext == '.' && !_stricmp(ext, ".fasl"))
-	{
-		// load a compiled file
-		char command[512];
-		strcpy_s(command, sizeof(command), "(common-lisp:load #P\"");
-		strcat_s(command, sizeof(command), filename);
-		strcat_s(command, sizeof(command), "\")");
-		KernelProcessSource(command, strlen(command));
-		return;
-	}
-
-	// load the file into memory
-	DWORD fileSize;
-	BYTE* data = MapFile(filename, &fileSize);
-
-	if (!data)
-	{
-		fprintf(stderr, "Error: Could not open file %s.\n", filename);
-		return;
-	}
-
-	// process code in the file
-	KernelProcessSource((char*)data, fileSize);
-
-	UnmapFile(data);
+	KernelInitialize = CormanLispInitialize;
+	KernelRun = CormanLispRun;
+	KernelProcessSource = CormanLispProcessSource;
+	KernelNumThreads = CormanLispNumThreads;
+	KernelAbortThread = CormanLispAbortThread;
+	return true;
 }
+
+static void interrupted(int /*signal*/)
+{
+	interruptLisp();
+}
+
+static void prepareConsole()
+{
+	signal(SIGINT, interrupted);
+}
+
+static void getModulePath(char* path, unsigned long size)
+{
+	ssize_t length = readlink("/proc/self/exe", path, size - 1);
+	path[length < 0 ? 0 : length] = 0;
+}
+
+static long openURL(const char* /*url*/)
+{
+	return -1;		// nothing to open one with
+}
+
+static void sleepMilliseconds(unsigned long milliseconds)
+{
+	struct timespec time;
+	time.tv_sec = milliseconds / 1000;
+	time.tv_nsec = (milliseconds % 1000) * 1000000;
+	nanosleep(&time, 0);
+}
+
+static bool sameIgnoringCase(const char* a, const char* b)
+{
+	return strcasecmp(a, b) == 0;
+}
+
+#endif

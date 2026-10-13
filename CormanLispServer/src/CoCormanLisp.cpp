@@ -174,16 +174,13 @@ STDMETHODIMP_(ULONG) CoCormanLisp::Release()
 
 //////////////////////////////////////////////////////////////////////
 // ICormanLisp interface
-extern const int LispImageNameMax = 256;
-char LispImageName[LispImageNameMax] = "cormanlisp.img";
-int CormanLispClientType = 0;
 
 // client type should be WIN_APP_CLIENT, CONSOLE_CLIENT or IDE_CLIENT
 STDMETHODIMP CoCormanLisp::Initialize(IUnknown* clientInterface, 
 			const char* lispImage, int clientType)
 {
 	if (lispImage)
-		strncpy_s(LispImageName, sizeof(LispImageName), lispImage, LispImageNameMax);
+		strncpy_s(LispImageName, LispImageNameMax, lispImage, LispImageNameMax);
 	CormanLispClientType = clientType;
 	if (pUserInfo == NULL)
 	{
@@ -207,7 +204,7 @@ STDMETHODIMP CoCormanLisp::InitializeEx(IUnknown* clientInterface,
             int ephemeralHeap1Size, int ephemeralHeap2Size)
 {
 	if (lispImage)
-		strncpy_s(LispImageName, sizeof(LispImageName), lispImage, LispImageNameMax);
+		strncpy_s(LispImageName, LispImageNameMax, lispImage, LispImageNameMax);
 	CormanLispClientType = clientType;
 	CormanLispSetHeapSizes(heapReserve, heapInitialSize, ephemeralHeap1Size, ephemeralHeap2Size);
 

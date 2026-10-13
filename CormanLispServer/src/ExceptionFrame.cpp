@@ -56,11 +56,21 @@ __declspec(naked) void __cdecl ResumeJumpContext(JumpContext* context)
 	}
 }
 
+#ifdef _WIN32
 //	The head of the thread's list of exception handlers, fs:[0].
 static EXCEPTION_REGISTRATION_RECORD*& exceptionList()
 {
 	return ((NT_TIB*)NtCurrentTeb())->ExceptionList;
 }
+#else
+//	Where the operating system keeps no such list, the kernel keeps one.
+static __thread EXCEPTION_REGISTRATION_RECORD* ExceptionList = 0;
+
+static EXCEPTION_REGISTRATION_RECORD*& exceptionList()
+{
+	return ExceptionList;
+}
+#endif
 
 static EXCEPTION_DISPOSITION __cdecl
 exceptionFrameHandler(EXCEPTION_RECORD* record, void* registration, CONTEXT* context, void*)

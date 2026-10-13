@@ -12,7 +12,6 @@
 
 #include "Stdafx.h"
 #include "ExceptionFrame.h"
-#include <process.h>
 #include <string.h>
 
 #include "CormanLispServer.h"
@@ -26,7 +25,6 @@ TextOutputFuncType TextOutputFuncPtr = 0;
 HINSTANCE gAppInstance = 0;
 HWND      gAppMainWindow = 0;
 
-OSVERSIONINFO gOsVersionInfo;
 TCHAR g_szFileName[MAX_PATH];
 char CormanLispServerDirectory[MAX_PATH+1];
 
@@ -58,6 +56,7 @@ void processAttach(HINSTANCE hInstance)
 		CormanLispServerDirectory[0] = 0;
 }
 
+#ifdef _WIN32
 extern "C" int __declspec( dllexport ) __stdcall
 DllMain(HINSTANCE hInstance, DWORD dwReason, LPVOID /*lpReserved*/)
 {
@@ -87,6 +86,7 @@ DllMain(HINSTANCE hInstance, DWORD dwReason, LPVOID /*lpReserved*/)
 	}
 	return 1;   // ok
 }
+#endif
 
 extern "C" long Initialize(const wchar_t* imageName, int clientType, HINSTANCE appInstance,
 			   HANDLE* thread, HWND mainWindow, TextOutputFuncType TextOutputFunc)

@@ -16,6 +16,10 @@
 #include "UserInfo.h"
 #include "Host.h"
 
+extern const int LispImageNameMax = 256;
+char LispImageName[LispImageNameMax] = "cormanlisp.img";
+int CormanLispClientType = 0;
+
 static CormanLispHost Host = { 0 };
 static bool HostAttached = false;
 

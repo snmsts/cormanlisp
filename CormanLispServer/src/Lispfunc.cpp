@@ -858,15 +858,13 @@ LispFunction(Gensym)
 }
 
 #ifdef X86
-static LARGE_INTEGER largeTime;
-
 LispFunction(Get_Internal_Run_Time)
 {
 	LISP_FUNC_BEGIN(0);
 	ret = bignumNode(wrapInteger(2));
-	largeTime.QuadPart = osPerformanceCounter();
-	UVECTOR(ret)[BIGNUM_FIRST_CELL]		 = (LispObj)largeTime.LowPart;
-	UVECTOR(ret)[BIGNUM_FIRST_CELL + 1]  = (LispObj)largeTime.HighPart;
+	unsigned __int64 count = (unsigned __int64)osPerformanceCounter();
+	UVECTOR(ret)[BIGNUM_FIRST_CELL]		 = (LispObj)(unsigned long)count;
+	UVECTOR(ret)[BIGNUM_FIRST_CELL + 1]  = (LispObj)(unsigned long)(count >> 32);
 
 	LISP_FUNC_RETURN(ret);
 }
@@ -874,8 +872,7 @@ LispFunction(Get_Internal_Run_Time)
 LispFunction(Get_Time_Units_Per_Second)
 {
 	LISP_FUNC_BEGIN(0);
-	largeTime.QuadPart = osPerformanceFrequency();
-	ret = createLispInteger(largeTime.LowPart);
+	ret = createLispInteger((long)(unsigned long)osPerformanceFrequency());
 	LISP_FUNC_RETURN(ret);
 }
 
@@ -3418,7 +3415,7 @@ LispFunction(Add_Menu_Item)
 						(char*)byteArrayStart(nullTerminate(menu)),
 						(char*)byteArrayStart(nullTerminate(item)));
 	}
-	if (rv == S_OK)
+	if (rv == 0)
 		ret = T;
 	else
 		ret = NIL;
@@ -4133,6 +4130,12 @@ LispFunction(Hardware_GC)
 	LISP_FUNC_RETURN(sym);
 }
 
+//	Lisp calls this as it would call a function of the operating system.
+static void* __stdcall loadLibraryForLisp(const char* path)
+{
+	return osLoadLibrary(path);
+}
+
 FunctEntry functTable[] =
 {
 	{	"SYMBOL-VALUE",				SymbolValue				},	// redefined in lisp
@@ -4452,7 +4455,7 @@ FunctEntry functTable[] =
 	{	"%ALLOC-VECTOR-TAGGED",		(LispFunc)LispAllocVectorTagged}, // already naked asm in C++, leave for now
 	{	"UPDATE-JUMP-TABLE",		UpdateJumpTable			},
     {   "%UNASSEMBLE",              (LispFunc)unassemble    },  // defined in Lisp via FFI
-    {   "%LOADLIBRARY",             (LispFunc)LoadLibraryA  },  // defined in Lisp via FFI
+    {   "%LOADLIBRARY",             (LispFunc)loadLibraryForLisp },  // defined in Lisp via FFI
 	{	"%HARDWARE-GC",				Hardware_GC				},  // turn on or off hardware-assisted gc
 
     // these are just here for Lisp reporting purposes (so the names in stack dumps are known)

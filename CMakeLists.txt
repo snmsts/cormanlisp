@@ -7,22 +7,41 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Standard CACHE STRING "" FORCE)
 endif()
 
-project(CormanLisp LANGUAGES C CXX RC)
+project(CormanLisp LANGUAGES C CXX)
+if(WIN32)
+  enable_language(RC)
+endif()
 
-# The kernel is 32-bit x86 code for Windows with inline assembly in the
-# Microsoft syntax: the Microsoft compiler, or clang (as clang-cl with the
-# Microsoft libraries, or as clang with those of mingw-w64).
-if(NOT WIN32 OR NOT (MSVC OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))
-  message(FATAL_ERROR "Corman Lisp needs the Microsoft compiler or clang, targeting Windows.")
+# The kernel is 32-bit x86 code with inline assembly in the Microsoft
+# syntax. For Windows that takes the Microsoft compiler, or clang (as
+# clang-cl with the Microsoft libraries, or as clang with those of
+# mingw-w64); for Linux, where the kernel does not run yet, clang.
+if(WIN32)
+  if(NOT (MSVC OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))
+    message(FATAL_ERROR "Corman Lisp needs the Microsoft compiler or clang.")
+  endif()
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    message(FATAL_ERROR "Corman Lisp needs clang.")
+  endif()
+else()
+  message(FATAL_ERROR "Corman Lisp is for Windows; a port to Linux is under way.")
 endif()
 if(NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
   message(FATAL_ERROR
     "Corman Lisp is a 32-bit x86 program. Configure for x86, e.g.\n"
-    "  cmake -G \"Visual Studio 17 2022\" -A Win32 ...")
+    "  cmake -G \"Visual Studio 17 2022\" -A Win32 ...\n"
+    "or, with clang for Linux,\n"
+    "  cmake -DCMAKE_C_COMPILER_TARGET=i686-linux-gnu -DCMAKE_CXX_COMPILER_TARGET=i686-linux-gnu ...")
 endif()
 
 option(CORMANLISP_SYSTEM_ZLIB "Use an installed zlib instead of downloading the sources" OFF)
-option(CORMANLISP_BUILD_IMAGE "Build CormanLisp.img as part of the default target" ON)
+# On Linux the kernel cannot build the image yet.
+set(_image_default ON)
+if(NOT WIN32)
+  set(_image_default OFF)
+endif()
+option(CORMANLISP_BUILD_IMAGE "Build CormanLisp.img as part of the default target" ${_image_default})
 # The IDE needs the MFC component of the compiler, and so far it is only
 # built with the Microsoft compiler.
 find_package(MFC QUIET)
@@ -70,19 +89,29 @@ else()
   set(CMAKE_SHARED_LINKER_FLAGS_STANDARD "")
   set(CMAKE_MODULE_LINKER_FLAGS_STANDARD "")
   set(CMAKE_STATIC_LINKER_FLAGS_STANDARD "")
-  # CormanLispServer.rc is not ASCII.
-  set(CMAKE_RC_FLAGS "-c 1252")
 
   # -fms-extensions for the inline assembly; no SSE, as with /arch:IA32.
   add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:-fms-extensions;-march=i686;-mno-sse;-Wall>")
-  # No DEP, see above, and no DLLs of the compiler's runtime to carry along.
-  add_link_options(-static -Wl,--disable-nxcompat -Wl,--dynamicbase)
   set(_frontend_options "")
   set(_o2 -O2)
-  # CormanLispServer.dll and dlltemplate.dll are looked for by these names.
-  set(CMAKE_SHARED_LIBRARY_PREFIX "")
+  if(WIN32)
+    # CormanLispServer.rc is not ASCII.
+    set(CMAKE_RC_FLAGS "-c 1252")
+    # No DEP, see above, and no DLLs of the compiler's runtime to carry along.
+    add_link_options(-static -Wl,--disable-nxcompat -Wl,--dynamicbase)
+    # CormanLispServer.dll and dlltemplate.dll are looked for by these names.
+    set(CMAKE_SHARED_LIBRARY_PREFIX "")
+  else()
+    # The inline assembly names variables by their addresses, which code
+    # that can be loaded anywhere does not know.
+    add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:-fasm-blocks;-fdeclspec;-fno-pic>")
+    add_link_options(-no-pie)
+  endif()
 endif()
-add_compile_definitions(WIN32 NDEBUG)
+if(WIN32)
+  add_compile_definitions(WIN32)
+endif()
+add_compile_definitions(NDEBUG)
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
   # Old habits of the sources which clang reports at every use.
   add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:-Wno-writable-strings;-Wno-missing-braces;-Wno-microsoft-exception-spec;-Wno-nonportable-include-path>")
@@ -145,6 +174,9 @@ else()
     "${_zlib}/zutil.c")
   target_include_directories(cormanlisp_zlib PUBLIC "${_zlib}")
   target_compile_definitions(cormanlisp_zlib PRIVATE _CRT_SECURE_NO_DEPRECATE _CRT_NONSTDC_NO_DEPRECATE)
+  if(NOT WIN32)
+    target_compile_definitions(cormanlisp_zlib PRIVATE Z_HAVE_UNISTD_H)
+  endif()
   # zlib has no part in the garbage collector's assumptions.
   target_compile_options(cormanlisp_zlib PRIVATE ${_o2})
 endif()
@@ -154,13 +186,23 @@ endif()
 # for the stand-alone application stubs.
 #
 set(_server "${CMAKE_SOURCE_DIR}/CormanLispServer")
+# What the kernel asks of the operating system.
+if(WIN32)
+  set(_kernel_os_sources "${_server}/src/OsWindows.cpp")
+else()
+  set(_kernel_os_sources "${_server}/src/OsLinux.cpp")
+endif()
 # What makes the kernel a COM server. Nothing else in the kernel uses COM.
-set(_kernel_com_sources
-  "${_server}/src/CoConnectionPoint.cpp"
-  "${_server}/src/CoCormanLisp.cpp"
-  "${_server}/src/CoEnumConnectionPoints.cpp"
-  "${_server}/src/CoEnumConnections.cpp"
-  "${_server}/src/ComServer.cpp")
+if(WIN32)
+  set(_kernel_com_sources
+    "${_server}/src/CoConnectionPoint.cpp"
+    "${_server}/src/CoCormanLisp.cpp"
+    "${_server}/src/CoEnumConnectionPoints.cpp"
+    "${_server}/src/CoEnumConnections.cpp"
+    "${_server}/src/ComServer.cpp")
+else()
+  set(_kernel_com_sources "")
+endif()
 add_library(cormanlisp_kernel OBJECT
   "${_server}/distorm/src/decoder.c"
   "${_server}/distorm/src/distorm.c"
@@ -181,35 +223,40 @@ add_library(cormanlisp_kernel OBJECT
   "${_server}/src/LispMath.cpp"
   "${_server}/src/LispThreadQueue.cpp"
   "${_server}/src/MemoryReport.cpp"
-  "${_server}/src/OsWindows.cpp"
   "${_server}/src/Read.cpp"
   "${_server}/src/Stdafx.cpp"
   "${_server}/src/TerminalInput.cpp"
   "${_server}/src/Unassemble.cpp"
   "${_server}/src/UserInfo.cpp"
   "${_server}/src/Write.cpp"
+  ${_kernel_os_sources}
   ${_kernel_com_sources})
 target_include_directories(cormanlisp_kernel PUBLIC
   "${CMAKE_SOURCE_DIR}/include"
   "${_server}/include")
-target_compile_definitions(cormanlisp_kernel PRIVATE _WINDOWS _WINDLL _CormanLispServer)
 target_link_libraries(cormanlisp_kernel PUBLIC cormanlisp_zlib)
 
-set(_kernel_libs cormanlisp_zlib ws2_32 odbc32 odbccp32 userenv ole32 oleaut32 uuid)
+if(WIN32)
+  target_compile_definitions(cormanlisp_kernel PRIVATE _WINDOWS _WINDLL _CormanLispServer)
+  set(_kernel_libs cormanlisp_zlib ws2_32 odbc32 odbccp32 userenv ole32 oleaut32 uuid)
 
-add_library(CormanLispServer SHARED
-  $<TARGET_OBJECTS:cormanlisp_kernel>
-  "${_server}/res/CormanLispServer.rc"
-  "${_server}/CormanLispServer.def")
-target_include_directories(CormanLispServer PRIVATE "${_server}/res")
-target_link_libraries(CormanLispServer PRIVATE ${_kernel_libs})
-if(MSVC)
-  target_link_options(CormanLispServer PRIVATE /SAFESEH:NO /SUBSYSTEM:WINDOWS /MANIFEST:NO)
+  add_library(CormanLispServer SHARED
+    $<TARGET_OBJECTS:cormanlisp_kernel>
+    "${_server}/res/CormanLispServer.rc"
+    "${_server}/CormanLispServer.def")
+  target_include_directories(CormanLispServer PRIVATE "${_server}/res")
+  target_link_libraries(CormanLispServer PRIVATE ${_kernel_libs})
+  if(MSVC)
+    target_link_options(CormanLispServer PRIVATE /SAFESEH:NO /SUBSYSTEM:WINDOWS /MANIFEST:NO)
+  else()
+    # The names in the .def file are those of stdcall functions.
+    target_link_options(CormanLispServer PRIVATE -Wl,--enable-stdcall-fixup)
+  endif()
+  cormanlisp_runtime_target(CormanLispServer)
 else()
-  # The names in the .def file are those of stdcall functions.
-  target_link_options(CormanLispServer PRIVATE -Wl,--enable-stdcall-fixup)
+  find_package(Threads REQUIRED)
+  set(_kernel_libs cormanlisp_zlib Threads::Threads ${CMAKE_DL_LIBS})
 endif()
-cormanlisp_runtime_target(CormanLispServer)
 
 add_library(CormanLispStatic STATIC $<TARGET_OBJECTS:cormanlisp_kernel>)
 target_link_libraries(CormanLispStatic INTERFACE ${_kernel_libs})
@@ -220,56 +267,69 @@ if(MSVC)
 endif()
 
 #
-# Front ends which load CormanLispServer.dll.
+# The console front end. On Windows it loads CormanLispServer.dll; elsewhere
+# the kernel is part of it.
 #
-add_executable(clconsole clconsole/clconsole.cpp clconsole/clconsole.rc)
-target_include_directories(clconsole PRIVATE "${CMAKE_SOURCE_DIR}/include")
-target_compile_definitions(clconsole PRIVATE _CONSOLE _MBCS)
-target_compile_options(clconsole PRIVATE ${_frontend_options})
-target_link_libraries(clconsole PRIVATE odbc32 odbccp32 ole32 oleaut32 uuid)
-cormanlisp_runtime_target(clconsole)
-cormanlisp_embed_manifest(clconsole)
-# clconsole loads the kernel at run time.
-add_dependencies(clconsole CormanLispServer)
-
-add_executable(clboot WIN32 clboot/clboot.cpp clboot/clboot.rc)
-target_include_directories(clboot PRIVATE "${CMAKE_SOURCE_DIR}/include")
-target_compile_definitions(clboot PRIVATE _WINDOWS)
-target_compile_options(clboot PRIVATE ${_frontend_options})
-target_link_libraries(clboot PRIVATE odbc32 odbccp32 ole32 oleaut32 uuid)
-cormanlisp_runtime_target(clboot)
-cormanlisp_embed_manifest(clboot)
-
-#
-# Stubs used by SAVE-APPLICATION and COMPILE-DLL.
-#
-add_executable(clconsoleapp clconsoleapp/clconsoleapp.cpp clconsoleapp/clconsoleapp.rc)
-target_include_directories(clconsoleapp PRIVATE "${CMAKE_SOURCE_DIR}/include")
-target_compile_definitions(clconsoleapp PRIVATE _CONSOLE _MBCS)
-target_compile_options(clconsoleapp PRIVATE ${_frontend_options})
-target_link_libraries(clconsoleapp PRIVATE CormanLispStatic)
-cormanlisp_runtime_target(clconsoleapp)
-cormanlisp_embed_manifest(clconsoleapp)
-
-add_executable(clbootapp WIN32 clbootapp/clbootapp.cpp clbootapp/clbootapp.rc)
-target_include_directories(clbootapp PRIVATE "${CMAKE_SOURCE_DIR}/include")
-target_compile_definitions(clbootapp PRIVATE _WINDOWS _MBCS)
-target_compile_options(clbootapp PRIVATE ${_frontend_options})
-target_link_libraries(clbootapp PRIVATE CormanLispStatic)
-cormanlisp_runtime_target(clbootapp)
-cormanlisp_embed_manifest(clbootapp)
-
-add_library(dlltemplate SHARED dlltemplate/dlltemplate.cpp dlltemplate/dlltemplate.def)
-target_compile_options(dlltemplate PRIVATE ${_frontend_options})
-# DllMain is the entry point, so the CRT startup code which would pull in
-# the rest of the C runtime is not linked.
-if(MSVC)
-  target_link_libraries(dlltemplate PRIVATE vcruntime ucrt)
-  target_link_options(dlltemplate PRIVATE /ENTRY:DllMain /SUBSYSTEM:WINDOWS /MANIFEST:NO)
+if(WIN32)
+  add_executable(clconsole clconsole/clconsole.cpp clconsole/clconsole.rc)
+  target_compile_definitions(clconsole PRIVATE _CONSOLE _MBCS)
+  target_link_libraries(clconsole PRIVATE odbc32 odbccp32 ole32 oleaut32 uuid)
+  cormanlisp_embed_manifest(clconsole)
+  # clconsole loads the kernel at run time.
+  add_dependencies(clconsole CormanLispServer)
 else()
-  target_link_options(dlltemplate PRIVATE -nostartfiles -Wl,--entry,_DllMain@12)
+  add_executable(clconsole clconsole/clconsole.cpp)
+  target_link_libraries(clconsole PRIVATE CormanLispStatic)
+  # There is a directory called clconsole where the program goes.
+  set_target_properties(clconsole PROPERTIES OUTPUT_NAME cormanlisp)
 endif()
-cormanlisp_runtime_target(dlltemplate)
+target_include_directories(clconsole PRIVATE "${CMAKE_SOURCE_DIR}/include")
+target_compile_options(clconsole PRIVATE ${_frontend_options})
+cormanlisp_runtime_target(clconsole)
+
+#
+# The other front ends which load CormanLispServer.dll.
+#
+if(WIN32)
+  add_executable(clboot WIN32 clboot/clboot.cpp clboot/clboot.rc)
+  target_include_directories(clboot PRIVATE "${CMAKE_SOURCE_DIR}/include")
+  target_compile_definitions(clboot PRIVATE _WINDOWS)
+  target_compile_options(clboot PRIVATE ${_frontend_options})
+  target_link_libraries(clboot PRIVATE odbc32 odbccp32 ole32 oleaut32 uuid)
+  cormanlisp_runtime_target(clboot)
+  cormanlisp_embed_manifest(clboot)
+
+  #
+  # Stubs used by SAVE-APPLICATION and COMPILE-DLL.
+  #
+  add_executable(clconsoleapp clconsoleapp/clconsoleapp.cpp clconsoleapp/clconsoleapp.rc)
+  target_include_directories(clconsoleapp PRIVATE "${CMAKE_SOURCE_DIR}/include")
+  target_compile_definitions(clconsoleapp PRIVATE _CONSOLE _MBCS)
+  target_compile_options(clconsoleapp PRIVATE ${_frontend_options})
+  target_link_libraries(clconsoleapp PRIVATE CormanLispStatic)
+  cormanlisp_runtime_target(clconsoleapp)
+  cormanlisp_embed_manifest(clconsoleapp)
+
+  add_executable(clbootapp WIN32 clbootapp/clbootapp.cpp clbootapp/clbootapp.rc)
+  target_include_directories(clbootapp PRIVATE "${CMAKE_SOURCE_DIR}/include")
+  target_compile_definitions(clbootapp PRIVATE _WINDOWS _MBCS)
+  target_compile_options(clbootapp PRIVATE ${_frontend_options})
+  target_link_libraries(clbootapp PRIVATE CormanLispStatic)
+  cormanlisp_runtime_target(clbootapp)
+  cormanlisp_embed_manifest(clbootapp)
+
+  add_library(dlltemplate SHARED dlltemplate/dlltemplate.cpp dlltemplate/dlltemplate.def)
+  target_compile_options(dlltemplate PRIVATE ${_frontend_options})
+  # DllMain is the entry point, so the CRT startup code which would pull in
+  # the rest of the C runtime is not linked.
+  if(MSVC)
+    target_link_libraries(dlltemplate PRIVATE vcruntime ucrt)
+    target_link_options(dlltemplate PRIVATE /ENTRY:DllMain /SUBSYSTEM:WINDOWS /MANIFEST:NO)
+  else()
+    target_link_options(dlltemplate PRIVATE -nostartfiles -Wl,--entry,_DllMain@12)
+  endif()
+  cormanlisp_runtime_target(dlltemplate)
+endif()
 
 #
 # The IDE: CormanLisp.exe, an MFC application.
@@ -328,7 +388,7 @@ add_custom_command(OUTPUT "${_image}"
           "-DSOURCE_DIR=${CMAKE_SOURCE_DIR}"
           "-DIMAGE=${_image}"
           -P "${CMAKE_SOURCE_DIR}/cmake/BuildImage.cmake"
-  DEPENDS clconsole CormanLispServer ${_sys_sources}
+  DEPENDS clconsole $<$<BOOL:${WIN32}>:CormanLispServer> ${_sys_sources}
           "${CMAKE_SOURCE_DIR}/cmake/BuildImage.cmake"
   COMMENT "Building CormanLisp.img"
   VERBATIM)

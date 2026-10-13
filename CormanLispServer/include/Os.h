@@ -72,7 +72,11 @@ extern void osSetThreadSlotValue(OsThreadSlot slot, void* value);
 //	handed the address of an OsLock as a foreign pointer, and the image
 //	file records how many bytes one takes up.
 //
+#ifdef _WIN32
 typedef CRITICAL_SECTION OsLock;
+#else
+typedef pthread_mutex_t OsLock;
+#endif
 
 extern void osInitializeLock(OsLock* lock);
 extern void osDeleteLock(OsLock* lock);
