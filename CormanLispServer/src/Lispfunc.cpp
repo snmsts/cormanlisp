@@ -20,6 +20,7 @@
 #include "lisp.h"
 #include "lispmath.h"
 #include "CormanLispServer.h"
+#include "Host.h"
 #include "Version.h"
 #include <zlib.h>
 
@@ -2954,8 +2955,8 @@ LispFunction(Editor_Set_Message)
 	LISP_FUNC_BEGIN(1);
 	LispObj message = LISP_ARG(0);
 	checkString(message);
-	if (CormanLispServer)
-		CormanLispServer->SetMessage((char*)byteArrayStart(nullTerminate(message)));
+	if (hostAttached())
+		hostSetMessage((char*)byteArrayStart(nullTerminate(message)));
 	ret = NIL;
 	LISP_FUNC_RETURN(ret);
 }
@@ -2963,8 +2964,8 @@ LispFunction(Editor_Set_Message)
 LispFunction(Editor_Set_Default_Message)
 {
 	LISP_FUNC_BEGIN(0);
-	if (CormanLispServer)
-		CormanLispServer->SetDefaultMessage();
+	if (hostAttached())
+		hostSetDefaultMessage();
 	ret = NIL;
 	LISP_FUNC_RETURN(ret);
 }
@@ -2973,8 +2974,8 @@ static char messageBuf[256];
 LispFunction(Editor_Get_Message)
 {
 	LISP_FUNC_BEGIN(0);
-	if (CormanLispServer)
-		CormanLispServer->GetMessage(messageBuf, 256);
+	if (hostAttached())
+		hostGetMessage(messageBuf, 256);
 	ret = stringNode(messageBuf);
 	LISP_FUNC_RETURN(ret);
 }
@@ -3342,8 +3343,8 @@ LispFunction(Get_Application_Instance)
 {
 	LISP_FUNC_BEGIN(0);
 	HINSTANCE instance = 0;
-	if (CormanLispServer)
-		CormanLispServer->GetAppInstance(&instance);
+	if (hostAttached())
+		instance = (HINSTANCE)hostAppInstance();
 	ret = AllocVector(FOREIGN_SIZE);
 	setUvectorType(ret, ForeignType);
 	foreignPtr(ret) = (LispObj)instance;
@@ -3354,8 +3355,8 @@ LispFunction(Get_Application_Main_Window)
 {
 	LISP_FUNC_BEGIN(0);
 	HWND wnd = 0;
-	if (CormanLispServer)
-		CormanLispServer->GetAppMainWindow(&wnd);
+	if (hostAttached())
+		wnd = (HWND)hostAppMainWindow();
 	ret = AllocVector(FOREIGN_SIZE);
 	setUvectorType(ret, ForeignType);
 	foreignPtr(ret) = (LispObj)wnd;
@@ -3373,8 +3374,8 @@ LispFunction(Ed)
 	checkString(filename);
 	HRESULT rv = E_FAIL;
 	HWND wnd = 0;
-	if (CormanLispServer)
-		rv = CormanLispServer->OpenEditWindow((char*)byteArrayStart(nullTerminate(filename)), &wnd);
+	if (hostAttached())
+		rv = hostOpenEditWindow((char*)byteArrayStart(nullTerminate(filename)), (void**)&wnd);
 	fp = foreignNode();
 	UVECTOR(fp)[FOREIGN_PTR] = (LispObj)wnd;
 	ret = fp;
@@ -3389,8 +3390,8 @@ LispFunction(Display_URL)
 	checkString(filename);
 	HRESULT rv = E_FAIL;
 	HWND wnd = 0;
-	if (CormanLispServer)
-		rv = CormanLispServer->OpenURL((char*)byteArrayStart(nullTerminate(filename)), &wnd);
+	if (hostAttached())
+		rv = hostOpenURL((char*)byteArrayStart(nullTerminate(filename)), (void**)&wnd);
 	fp = foreignNode();
 	UVECTOR(fp)[FOREIGN_PTR] = (LispObj)wnd;
 	ThreadQV()[MULTIPLE_RETURN_VALUES_Index] = list(fp, createLispInteger(rv), END_LIST);
@@ -3412,14 +3413,14 @@ LispFunction(Add_Menu_Item)
 	checkString(menu);
 	if (item == NIL)
 	{
-		if (CormanLispServer)
-			rv = CormanLispServer->AddMenu((char*)byteArrayStart(nullTerminate(menu)));
+		if (hostAttached())
+			rv = hostAddMenu((char*)byteArrayStart(nullTerminate(menu)));
 	}
 	else
 	{
 		checkString(item);
-		if (CormanLispServer)
-			rv = CormanLispServer->AddMenuItem(
+		if (hostAttached())
+			rv = hostAddMenuItem(
 						(char*)byteArrayStart(nullTerminate(menu)),
 						(char*)byteArrayStart(nullTerminate(item)));
 	}
@@ -3980,8 +3981,8 @@ LispFunction(Editor_Replace_Selection)
 	LispObj text = LISP_ARG(0);
 	checkString(text);
 	char* str = (char*)byteArrayStart(nullTerminate(text));
-	if (CormanLispServer)
-		CormanLispServer->ReplaceSelection(str, strlen(str));
+	if (hostAttached())
+		hostReplaceSelection(str, strlen(str));
 	LISP_FUNC_RETURN(ret);
 }
 
@@ -4573,8 +4574,8 @@ static void updateKernelFunctions()
 	UVECTOR(f)[FOREIGN_PTR] = (LispObj)QV;
 
 	// initialize *cormanlisp-directory* variable
-	if (CormanLispServer)
-		CormanLispServer->GetAppInstance((HINSTANCE*)&appHandle);
+	if (hostAttached())
+		appHandle = (decltype(appHandle))hostAppInstance();
 	numChars = GetModuleFileName((HINSTANCE)appHandle, CormanLispDirectoryBuffer, _MAX_PATH);
 	for (i = numChars - 1; i >= 0; i--)
 	{
@@ -4804,13 +4805,13 @@ LispFunction(Lisp_Shutdown)
 	numBytes = expandLineFeedsIntoBuffer(charArrayStart(message),
 		integer(len), CharBuffer);
 
-	if (CormanLispServer)
+	if (hostAttached())
 	{
 		// convert from 16-bit to 8-bit chars
 		ByteOutputBuffer = (byte*)CharBuffer;
 		for (int i = 0; i < numBytes; i++)
 			ByteOutputBuffer[i] = ByteOutputBuffer[i * 2];	// convert from 16-bit to 8-bit chars
-		CormanLispServer->LispShutdown((char*)ByteOutputBuffer, numBytes);
+		hostShutdown((char*)ByteOutputBuffer, numBytes);
 	}
 	delete [] CharBuffer;
 	ret = NIL;

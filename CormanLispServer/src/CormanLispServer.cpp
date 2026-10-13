@@ -19,15 +19,12 @@
 #include <string.h>
 
 #include "CormanLispServer.h"
+#include "Host.h"
 #include "lisp.h"
 
 #include "clsids.h"
 #include "CoCormanLisp.h"
 
-IUnknown*				 ClientUnknown		= 0;
-ICormanLispTextOutput*	 ClientTextOutput	= 0;
-ICormanLispStatusMessage* ClientMessage		= 0;
-ICormanLispShutdown*     ClientShutdown		= 0;
 const UserInfo*          CurrentUserInfo    = 0;
 
 
@@ -270,25 +267,12 @@ extern "C" long Initialize(const wchar_t* imageName, int clientType, HINSTANCE a
 	return 1;		// success
 }
 
-void InitializeCormanLisp(IUnknown* client, const UserInfo *user_info)
+void InitializeCormanLisp(const CormanLispHost* host, const UserInfo *user_info)
 {
-	HRESULT hr = 0;
-	ClientUnknown = client;
-	BOOL ret = 0;
-	HINSTANCE hInstance = 0;
 	CurrentUserInfo = user_info;
-
-	if (ClientUnknown)
-	{
-		hr = ClientUnknown->QueryInterface(IID_ICormanLispTextOutput, (void**)&ClientTextOutput);
-		hr = ClientUnknown->QueryInterface(IID_ICormanLispStatusMessage, (void**)&ClientMessage);
-		hr = ClientUnknown->QueryInterface(IID_ICormanLispShutdown, (void**)&ClientShutdown);
-	}
+	hostAttach(host);
 	if (!DLL_Loaded)
-	{
-		ClientTextOutput->GetAppInstance(&hInstance);
-		processAttach(hInstance);
-	}
+		processAttach((HINSTANCE)hostAppInstance());
 
 	// initialize lisp system
 	osSetThreadSlotValue(QV_Index, QV);	// store global QV as the QV for this thread
@@ -304,13 +288,13 @@ void RunCormanLisp(HANDLE* thread)
 }
 
 void
-ProcessLispSource(char* text, long numChars)
+ProcessLispSource(const char* text, long numChars)
 {
 	long i = 0;
 	long added = 0;
 	while (numChars > 0)
 	{
-		added = TerminalInputBuf.addChars(text + i, numChars);
+		added = TerminalInputBuf.addChars((char*)text + i, numChars);
 		i += added;
 		numChars -= added;
 	}

@@ -30,6 +30,7 @@
 #include "threadclasses.h"
 #include "ErrorMessage.h"
 #include "CormanLispServer.h"
+#include "Host.h"
 #include "Version.h"
 
 #ifdef X86
@@ -727,8 +728,8 @@ initLisp()
 	setSymbolValue(LAMBDA_SPECIAL_DECS, NIL);
 
 	// initialize *cormanlisp-directory* variable
-	if (CormanLispServer)
-		CormanLispServer->GetAppInstance((HINSTANCE*)&appHandle);
+	if (hostAttached())
+		appHandle = (decltype(appHandle))hostAppInstance();
 	numChars = GetModuleFileName((HINSTANCE)appHandle, CormanLispDirectoryBuffer, _MAX_PATH);
 	for (i = numChars - 1; i >= 0; i--)
 	{
@@ -2378,14 +2379,14 @@ LispFunction(Throw_Exception)
 		if (tag == ERROR_SIGNAL)
 		{
 			// we can't throw an error here--that's how we got here!
-			if (CormanLispServer)
-				CormanLispServer->GetAppMainWindow(&wnd);
+			if (hostAttached())
+				wnd = (HWND)hostAppMainWindow();
 
 			MessageBox(wnd, "Sorry, no global error handler was found--Corman Lisp is quitting.",
 				"Fatal Error", 
 				MB_OK|MB_SETFOREGROUND);
-			if (CormanLispServer)
-				CormanLispServer->SetMessage("Corman Lisp has stopped.");
+			if (hostAttached())
+				hostSetMessage("Corman Lisp has stopped.");
 			osExitThread((unsigned)-1);
 		}
 		else

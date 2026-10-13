@@ -19,6 +19,7 @@
 #include "generic.h"
 #include "lisp.h"
 #include "CormanLispServer.h"
+#include "Host.h"
 
 // UpperAlpha, LowerAlpha: only convert alphabetic characters
 inline char 
@@ -475,8 +476,8 @@ consoleOverflow(LispObj s)
 		for (i = 0; i < integer(bytesToWrite); i++)
 			ByteOutputBuffer[i] = byteArrayStart(buf)[i];
 		numBytes = integer(bytesToWrite);
-		if (CormanLispServer)
-			CormanLispServer->OutputText((char*)ByteOutputBuffer, numBytes);
+		if (hostAttached())
+			hostOutputText((char*)ByteOutputBuffer, numBytes);
 		delete [] ByteOutputBuffer;
 	}
 	else
@@ -484,13 +485,13 @@ consoleOverflow(LispObj s)
 		CharOverflowBuffer = new LISP_CHAR[(4096 + 1) * 2];
 		numBytes = expandLineFeedsIntoBuffer(charArrayStart(streamOutputBuffer(s)),
 			integer(bytesToWrite), CharOverflowBuffer);
-		if (CormanLispServer)
+		if (hostAttached())
 		{
 			// convert from 16-bit to 8-bit chars
 			ByteOutputBuffer = (byte*)CharOverflowBuffer;
 			for (int i = 0; i < numBytes; i++)
 				ByteOutputBuffer[i] = ByteOutputBuffer[i * 2];	// convert from 16-bit to 8-bit chars
-			CormanLispServer->OutputText((char*)ByteOutputBuffer, numBytes);
+			hostOutputText((char*)ByteOutputBuffer, numBytes);
 		}
 		else
 		if (TextOutputFuncPtr)

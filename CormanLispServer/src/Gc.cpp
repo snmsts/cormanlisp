@@ -50,6 +50,7 @@
 #include "Lisp.h"
 #include "threadclasses.h"
 #include "CormanLispServer.h"
+#include "Host.h"
 
 #pragma warning (disable:4505)				// unreferenced local function has been removed			
 
@@ -1363,7 +1364,7 @@ void garbageCollect(long level)
                 // dump information about the problem
         	    WriteMemoryReportTask((void*)(-2), 0);
 
-                CormanLispServer->GetAppMainWindow(&wnd);
+                wnd = (HWND)hostAppMainWindow();
 
                 char* msg = "A problem has occurred during garbage collection.\n"
                                 "This may be because the heap has become corrupted, \n"
@@ -1372,7 +1373,7 @@ void garbageCollect(long level)
                                 "Corman Lisp to continue executing Lisp code.\n"
                                 "A system report has been written to the file 'CormanLisp_Dump.log'.";
                 GCFailure = true;
-                CormanLispServer->LispShutdown(msg, strlen(msg));
+                hostShutdown(msg, strlen(msg));
             }
 
  //           GCCriticalSection.Enter();
@@ -1610,7 +1611,7 @@ static long gcHandleStructuredException(long exception, LPEXCEPTION_POINTERS inf
         ThreadList.resumeAllOtherThreads();
         GCCriticalSection.Leave();
 
-        CormanLispServer->GetAppMainWindow(&wnd);
+        wnd = (HWND)hostAppMainWindow();
 
         char* msg = "A memory access violation has occurred during garbage collection.\n"
                         "This may be because the heap has become corrupted, \n"
@@ -1619,7 +1620,7 @@ static long gcHandleStructuredException(long exception, LPEXCEPTION_POINTERS inf
                         "Corman Lisp to continue executing Lisp code.\n"
                         "A system report has been written to the file 'CormanLisp_Dump.log'.";
         GCFailure = true;
-        CormanLispServer->LispShutdown(msg, strlen(msg));
+        hostShutdown(msg, strlen(msg));
 
         return EXCEPTION_EXECUTE_HANDLER;
     }	
@@ -1650,7 +1651,7 @@ static long gcHandleStructuredExceptionDuringFinalization(long exception, LPEXCE
         // dump information about the problem
         WriteMemoryReportTask(attemptedAddress, info->ContextRecord);
 
-        CormanLispServer->GetAppMainWindow(&wnd);
+        wnd = (HWND)hostAppMainWindow();
         char* msg = "A memory access violation has occurred during the finalization stage\n"
                         "of garbage collection.\n"
                         "This may be because the heap has become corrupted, \n"
@@ -1659,7 +1660,7 @@ static long gcHandleStructuredExceptionDuringFinalization(long exception, LPEXCE
                         "Corman Lisp to continue executing Lisp code.\n"
                         "A system report has been written to the file 'CormanLisp_Dump.log'.";
         GCFailure = true;
-        CormanLispServer->LispShutdown(msg, strlen(msg));
+        hostShutdown(msg, strlen(msg));
 
         return EXCEPTION_EXECUTE_HANDLER;
     }	
@@ -2880,7 +2881,7 @@ promoteBlock(LispObj* ptr, LispHeap* toSpace)
             if (checkVerifyUvector(obj) == 0)
             {
                 char* message = "Invalid heap object detected.";
-                CormanLispServer->OutputText(message, strlen(message));
+                hostOutputText(message, strlen(message));
             }
         }
 

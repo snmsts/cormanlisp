@@ -10,3 +10,9 @@ EXPORTS
     DllRegisterServer		PRIVATE
     DllUnregisterServer		PRIVATE
     Initialize				PRIVATE
+    CormanLispSetHeapSizes	PRIVATE
+    CormanLispInitialize	PRIVATE
+    CormanLispRun			PRIVATE
+    CormanLispProcessSource	PRIVATE
+    CormanLispNumThreads	PRIVATE
+    CormanLispAbortThread	PRIVATE

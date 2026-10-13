@@ -36,6 +36,89 @@ extern void SvcUnlock();
 CoCormanLisp* CormanLispServer = 0;
 
 //////////////////////////////////////////////////////////////////////
+// The kernel's calls to its host, passed on to whoever is connected
+static void comOutputText(void*, const char* text, long numChars)
+{
+	CormanLispServer->OutputText((char*)text, numChars);
+}
+
+static void comShutdown(void*, const char* text, long numChars)
+{
+	CormanLispServer->LispShutdown((char*)text, numChars);
+}
+
+static void comSetMessage(void*, const char* text)
+{
+	CormanLispServer->SetMessage((char*)text);
+}
+
+static void comGetMessage(void*, char* text, long maxMessageLength)
+{
+	CormanLispServer->GetMessage(text, maxMessageLength);
+}
+
+static void comSetDefaultMessage(void*)
+{
+	CormanLispServer->SetDefaultMessage();
+}
+
+static long comOpenEditWindow(void*, const char* file, void** window)
+{
+	return CormanLispServer->OpenEditWindow((char*)file, (HWND*)window);
+}
+
+static long comOpenURL(void*, const char* file, void** window)
+{
+	return CormanLispServer->OpenURL((char*)file, (HWND*)window);
+}
+
+static long comAddMenu(void*, const char* menuName)
+{
+	return CormanLispServer->AddMenu((char*)menuName);
+}
+
+static long comAddMenuItem(void*, const char* menuName, const char* menuItem)
+{
+	return CormanLispServer->AddMenuItem((char*)menuName, (char*)menuItem);
+}
+
+static void comReplaceSelection(void*, const char* text, long numChars)
+{
+	CormanLispServer->ReplaceSelection((char*)text, numChars);
+}
+
+static void* comAppInstance(void*)
+{
+	HINSTANCE appInstance = 0;
+	CormanLispServer->GetAppInstance(&appInstance);
+	return appInstance;
+}
+
+static void* comAppMainWindow(void*)
+{
+	HWND appMainWindow = 0;
+	CormanLispServer->GetAppMainWindow(&appMainWindow);
+	return appMainWindow;
+}
+
+static const CormanLispHost ComHost =
+{
+	0,
+	comOutputText,
+	comShutdown,
+	comSetMessage,
+	comGetMessage,
+	comSetDefaultMessage,
+	comOpenEditWindow,
+	comOpenURL,
+	comAddMenu,
+	comAddMenuItem,
+	comReplaceSelection,
+	comAppInstance,
+	comAppMainWindow
+};
+
+//////////////////////////////////////////////////////////////////////
 // ctor and dtor
 CoCormanLisp::CoCormanLisp():
 pUserInfo(NULL)
@@ -113,7 +196,7 @@ STDMETHODIMP CoCormanLisp::Initialize(IUnknown* clientInterface,
 		}
 		pUserInfo = info;
 	}
-	InitializeCormanLisp(clientInterface, (UserInfo *)pUserInfo);
+	InitializeCormanLisp(&ComHost, (UserInfo *)pUserInfo);
 	return S_OK;
 }
 
@@ -126,41 +209,7 @@ STDMETHODIMP CoCormanLisp::InitializeEx(IUnknown* clientInterface,
 	if (lispImage)
 		strncpy_s(LispImageName, sizeof(LispImageName), lispImage, LispImageNameMax);
 	CormanLispClientType = clientType;
-    if (heapReserve != 0)
-    {
-        if (heapReserve < LispHeapReserveMin)
-            heapReserve = LispHeapReserveMin;
-        if (heapReserve > LispHeapReserveMax)
-            heapReserve = LispHeapReserveMax;
-         LispHeapReserveDefault = heapReserve;
-    }
-
-    if (heapInitialSize != 0)
-    {
-        if (heapInitialSize < LispHeapSizeMin)
-            heapInitialSize = LispHeapSizeMin;
-        if (heapInitialSize > LispHeapSizeMax)
-            heapInitialSize = LispHeapSizeMax;
-         LispHeapSize = heapInitialSize;
-    }
-
-    if (ephemeralHeap1Size != 0)
-    {
-        if (ephemeralHeap1Size < EphemeralHeap1SizeMin)
-            ephemeralHeap1Size = EphemeralHeap1SizeMin;
-        if (ephemeralHeap1Size > EphemeralHeap1SizeMax)
-            ephemeralHeap1Size = EphemeralHeap1SizeMax;
-        EphemeralHeap1Size = ephemeralHeap1Size;
-    }
-
-    if (ephemeralHeap2Size != 0)
-    {
-        if (ephemeralHeap2Size < EphemeralHeap2SizeMin)
-            ephemeralHeap2Size = EphemeralHeap2SizeMin;
-        if (ephemeralHeap2Size > EphemeralHeap2SizeMax)
-            ephemeralHeap2Size = EphemeralHeap2SizeMax;
-        EphemeralHeap2Size = ephemeralHeap2Size;
-    }
+	CormanLispSetHeapSizes(heapReserve, heapInitialSize, ephemeralHeap1Size, ephemeralHeap2Size);
 
 	if (pUserInfo == NULL)
 	{
@@ -174,7 +223,7 @@ STDMETHODIMP CoCormanLisp::InitializeEx(IUnknown* clientInterface,
 		pUserInfo = info;
 	}
 
-	InitializeCormanLisp(clientInterface, (UserInfo *)pUserInfo);
+	InitializeCormanLisp(&ComHost, (UserInfo *)pUserInfo);
 	return S_OK;
 }
 

@@ -173,6 +173,7 @@ add_library(cormanlisp_kernel OBJECT
   "${_server}/src/CormanLispServer.cpp"
   "${_server}/src/ExceptionFrame.cpp"
   "${_server}/src/Gc.cpp"
+  "${_server}/src/Host.cpp"
   "${_server}/src/Lisp.cpp"
   "${_server}/src/Lispfunc.cpp"
   "${_server}/src/LispMath.cpp"

@@ -15,6 +15,7 @@
 
 #include "Lisp.h"
 #include "CormanLispServer.h"
+#include "Host.h"
 
 static LispObj* stackStart = 0;
 static LispObj* stackEnd = 0;
@@ -1090,7 +1091,7 @@ void writeMemoryReport(void* address, CONTEXT* context)
 			}
             if (err != 0)
             {
-                CormanLispServer->GetAppMainWindow(&wnd);
+                wnd = (HWND)hostAppMainWindow();
                 ThreadList.resumeAllOtherThreads();
                 MessageBox(wnd, "A system report could not be written because an error was encountered on\n"
                                 "the attempt to open the file 'CormanLisp_Dump.log'.",
