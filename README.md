@@ -9,7 +9,9 @@ From the [Corman Lisp 'Features' page](http://www.cormanlisp.com/features.html):
 
 > Corman Lisp incorporates state-of-the-art compiler technology to bring you a Common Lisp system unmatched on Windows platforms.
 
-Corman Lisp works on Windows XP SP3 and newer. It is also reported to [work on Linux via Wine](https://appdb.winehq.org/objectManager.php?sClass=application&iId=4751).
+Corman Lisp works on Windows XP SP3 and newer. It is also reported to [work on Linux via Wine](https://appdb.winehq.org/objectManager.php?sClass=application&iId=4751),
+and it can be built for 32-bit x86 Linux to run there natively, without
+the IDE (see [Building for Linux](#building-for-linux)).
 
 ## Building
 
@@ -59,7 +61,7 @@ Microsoft tools:
 
 The Microsoft compiler and libraries are not needed at all with the clang
 of the mingw-w64 toolchain for 32-bit x86, for instance in the MINGW32
-environment of MSYS2:
+environment of MSYS2 (which no longer offers clang for new installations):
 
     cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Standard \
       -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
@@ -71,6 +73,28 @@ syntax.
 The IDE is not built with clang yet.
 
 The installer is not part of the CMake build yet.
+
+### Building for Linux
+
+The kernel also builds for Linux, as 32-bit x86 code, with clang and the
+C library for i686. On Debian, for instance, this takes the packages
+`clang`, `cmake`, `ninja-build` and `g++-i686-linux-gnu`, and on a
+64-bit system `libc6:i386` and `libstdc++6:i386` to run the result:
+
+    cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Standard \
+      -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+      -DCMAKE_C_COMPILER_TARGET=i686-linux-gnu \
+      -DCMAKE_CXX_COMPILER_TARGET=i686-linux-gnu \
+      -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=i686
+    cmake --build build
+
+This places `cormanlisp`, which has the kernel built in, and
+`CormanLisp.img` at the top of the source tree. `cormanlisp` is used as
+`clconsole` is on Windows; `./cormanlisp -execute test/run-tests.lisp`
+runs the tests. `SAVE-APPLICATION` copies it, with the image appended.
+
+The IDE, COM, the editor and the modules which call Windows are not
+available on Linux.
 
 ### Libraries needed at run time
 

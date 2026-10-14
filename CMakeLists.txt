@@ -15,7 +15,7 @@ endif()
 # The kernel is 32-bit x86 code with inline assembly in the Microsoft
 # syntax. For Windows that takes the Microsoft compiler, or clang (as
 # clang-cl with the Microsoft libraries, or as clang with those of
-# mingw-w64); for Linux, where the kernel does not run yet, clang.
+# mingw-w64); for Linux, clang.
 if(WIN32)
   if(NOT (MSVC OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))
     message(FATAL_ERROR "Corman Lisp needs the Microsoft compiler or clang.")
@@ -25,7 +25,7 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     message(FATAL_ERROR "Corman Lisp needs clang.")
   endif()
 else()
-  message(FATAL_ERROR "Corman Lisp is for Windows; a port to Linux is under way.")
+  message(FATAL_ERROR "Corman Lisp is for Windows and Linux.")
 endif()
 if(NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
   message(FATAL_ERROR
@@ -36,12 +36,7 @@ if(NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
 endif()
 
 option(CORMANLISP_SYSTEM_ZLIB "Use an installed zlib instead of downloading the sources" OFF)
-# On Linux the kernel cannot build the image yet.
-set(_image_default ON)
-if(NOT WIN32)
-  set(_image_default OFF)
-endif()
-option(CORMANLISP_BUILD_IMAGE "Build CormanLisp.img as part of the default target" ${_image_default})
+option(CORMANLISP_BUILD_IMAGE "Build CormanLisp.img as part of the default target" ON)
 # The IDE needs the MFC component of the compiler, and so far it is only
 # built with the Microsoft compiler.
 find_package(MFC QUIET)
