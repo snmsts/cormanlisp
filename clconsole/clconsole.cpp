@@ -389,6 +389,7 @@ static bool sameIgnoringCase(const char* a, const char* b)
 
 #else
 
+#include <pthread.h>
 #include <signal.h>
 #include <strings.h>
 #include <time.h>
@@ -412,14 +413,31 @@ static bool loadKernel()
 	return true;
 }
 
-static void interrupted(int /*signal*/)
+//	Control-C comes as a signal, which could arrive in any thread, one of
+//	Lisp's too, and a handler of a signal may do little. It is waited for
+//	in a thread of its own, as Windows calls the handler of the console
+//	in one.
+static void* waitForInterrupts(void* /*argument*/)
 {
-	interruptLisp();
+	sigset_t interrupt;
+	int signal = 0;
+	sigemptyset(&interrupt);
+	sigaddset(&interrupt, SIGINT);
+	while (sigwait(&interrupt, &signal) == 0)
+		interruptLisp();
+	return 0;
 }
 
 static void prepareConsole()
 {
-	signal(SIGINT, interrupted);
+	// no thread which is started from here on gets it either
+	sigset_t interrupt;
+	pthread_t waiter;
+	sigemptyset(&interrupt);
+	sigaddset(&interrupt, SIGINT);
+	pthread_sigmask(SIG_BLOCK, &interrupt, 0);
+	if (pthread_create(&waiter, 0, waitForInterrupts, 0) == 0)
+		pthread_detach(waiter);
 }
 
 static void getModulePath(char* path, unsigned long size)
