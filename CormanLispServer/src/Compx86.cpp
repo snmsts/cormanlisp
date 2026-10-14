@@ -34,7 +34,7 @@
 
 #include "Generic.h"
 #include "Lisp.h"
-#include "compx86.h"
+#include "Compx86.h"
 #include "Lispmath.h"
 
 typedef LispObj LispObj;

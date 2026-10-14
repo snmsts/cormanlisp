@@ -12,7 +12,7 @@
 #include <windows.h>
 #include <ole2.h>
 
-#include "CoEnumConnectionPoints.h"
+#include "CoEnumConnectionPoints.H"
 
 extern void SvrLock(void);
 extern void SvrUnlock(void);

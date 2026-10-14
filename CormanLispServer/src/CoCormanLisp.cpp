@@ -20,11 +20,11 @@
 #include <olectl.h>
 #include <string.h>
 
-#include "CoCormanLisp.H"
+#include "CoCormanLisp.h"
 #include "clsids.h"
 #include "CormanLispServer.h"
-#include "CoEnumConnectionPoints.h"
-#include "CoConnectionPoint.h"
+#include "CoEnumConnectionPoints.H"
+#include "CoConnectionPoint.H"
 
 
 #include "Lisp.h"

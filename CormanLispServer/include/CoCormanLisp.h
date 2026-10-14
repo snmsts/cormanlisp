@@ -17,7 +17,7 @@
 #define COLISP_H
 
 #include "ICormanLisp.h"
-#include "CoEnumConnectionPoints.h"
+#include "CoEnumConnectionPoints.H"
 class CoConnectionPoint;
 
 class CoCormanLisp :  

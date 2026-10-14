@@ -13,7 +13,7 @@
 #include <ole2.h>
 #include <olectl.h>
 
-#include "CoConnectionPoint.h"
+#include "CoConnectionPoint.H"
 #include "CoEnumConnections.h"
 
 extern void SvrLock(void);
