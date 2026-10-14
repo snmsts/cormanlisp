@@ -1224,7 +1224,7 @@
 
 (ct:defun-dll c_time ((time_ptr (:unsigned-long *)))
    :return-type :unsigned-long
-   :library-name "msvcrt.dll"
+   :library-name cl::c-library
    :entry-name "time"
    :linkage-type :c)
 
@@ -1438,10 +1438,10 @@
 		(setq output-file (truename output-file)))
 		(let ((template-file (pathname (concatenate 'string *CORMANLISP-DIRECTORY* "dlltemplate.dll"))))		
 			(unless
-				(win:CopyFile
+				(cl::os-copy-file
 					(ct:lisp-string-to-c-string (namestring template-file))
 					(ct:lisp-string-to-c-string (namestring output-file))
-					nil)
+					1)
 				(error "Could not create output file ~A" output-file))
 			(let* ((exports (make-array 10 :adjustable t :fill-pointer 0))
 		   		   (dll-name 

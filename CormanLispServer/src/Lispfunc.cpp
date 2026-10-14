@@ -4205,6 +4205,21 @@ static long lispOsMoveFile(const char* from, const char* to)
 	return osMoveFile(from, to) ? 1 : 0;
 }
 
+static long lispOsCopyFile(const char* from, const char* to, long replace)
+{
+	return osCopyFile(from, to, replace != 0) ? 1 : 0;
+}
+
+static void* lispOsMapFile(const char* path, unsigned long* size)
+{
+	return osMapFile(path, size);
+}
+
+static long lispOsUnmapFile(void* address)
+{
+	return osUnmapFile(address) ? 1 : 0;
+}
+
 static long lispOsFindFirstFile(const char* pattern, OsFoundFile* found)
 {
 	return (long)osFindFirstFile(pattern, found);
@@ -4643,6 +4658,9 @@ FunctEntry functTable[] =
 	{	"%OS-SET-CURRENT-DIRECTORY",(LispFunc)lispOsSetCurrentDirectory	},
 	{	"%OS-CREATE-DIRECTORY",	(LispFunc)lispOsCreateDirectory	},
 	{	"%OS-MOVE-FILE",			(LispFunc)lispOsMoveFile	},
+	{	"%OS-COPY-FILE",			(LispFunc)lispOsCopyFile	},
+	{	"%OS-MAP-FILE",			(LispFunc)lispOsMapFile	},
+	{	"%OS-UNMAP-FILE",			(LispFunc)lispOsUnmapFile	},
 	{	"%OS-FIND-FIRST-FILE",		(LispFunc)lispOsFindFirstFile	},
 	{	"%OS-FIND-NEXT-FILE",		(LispFunc)lispOsFindNextFile	},
 	{	"%OS-FIND-CLOSE",			(LispFunc)lispOsFindClose	},

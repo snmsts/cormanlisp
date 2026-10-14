@@ -2206,9 +2206,12 @@ Example:
 		(error "Third argument to memcmp must be a fixnum, got ~A" count))
 	(%memcmp (uref buf1 1)(uref buf2 1) count))
 
+;;; The library which has the functions of C.
+(defconstant cl::c-library #+os-windows "msvcrt.dll" #-os-windows "libc.so.6")
+
 (ct:defun-dll memcpy ((dest (:void *))(src (:void *))(count :unsigned-long))
    :return-type (:void *)
-   :library-name "msvcrt.dll"
+   :library-name cl::c-library
    :entry-name "memcpy"
    :linkage-type :c)
 

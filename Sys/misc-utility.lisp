@@ -258,10 +258,12 @@ WINAPI BOOL CopyFileExA(LPCTSTR lpExistingFileName, LPCTSTR lpNewFileName, LPVOI
 !#
 (in-package :ccl)
 (defun copy-file (source dest)
-    (win:CopyFileEx (namestring source) (namestring dest) ct:null ct:null ct:null 0))
+    (cl::os-copy-file (ct:lisp-string-to-c-string (namestring source))
+        (ct:lisp-string-to-c-string (namestring dest))
+        1))
 
 (defun move-file (source dest)
-    (win::MoveFile (ct:lisp-string-to-c-string (namestring source))
+    (cl::os-move-file (ct:lisp-string-to-c-string (namestring source))
         (ct:lisp-string-to-c-string (namestring dest))))
 
 ;; Ensures that the file is writable, and returns the previous file attributes (int).

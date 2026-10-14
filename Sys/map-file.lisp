@@ -76,44 +76,17 @@ BOOL WINAPI UnmapViewOfFile(LPCVOID lpBaseAddress);
 	"Usage:  (MAP-FILE pathname)
 	     Returns (1) address of the memory mapped file (or null if an error occurred)
 	             (2) the length (in bytes)"
-	(let ((hfile (win:CreateFile
-					(ct:create-c-string (namestring (pathname path)))
-					win:GENERIC_READ
-					win:FILE_SHARE_READ
-					NULL
-					win:OPEN_EXISTING
-					win:FILE_ATTRIBUTE_NORMAL
-					NULL))
-			(length nil))
-		(if (= (ct:foreign-ptr-to-int hfile) win:INVALID_HANDLE_VALUE)
-			(return-from map-file nil))
-		(setf length (win:GetFileSize hfile null))
-		(when (= length #xffffffff)
-			(win:CloseHandle hfile)
-			(return-from map-file nil))
-		(let ((hfilemap
-					(win:CreateFileMapping
-						hfile
-						null
-						win:PAGE_READONLY
-						0
-						0
-						null)))
-			(win:CloseHandle hfile)
-			(if (ct:cpointer= hfilemap null)
-				(return-from map-file nil))
-			(let ((mapped-address
-						(win:MapViewOfFile
-							hfilemap
-							win:FILE_MAP_READ
-							0
-							0
-							0)))
-				(win:CloseHandle hfilemap)
-				(values mapped-address length)))))
+	(ct:with-fresh-foreign-block (length :unsigned-long)
+		(let ((mapped-address
+					(cl::os-map-file
+						(ct:create-c-string (namestring (pathname path)))
+						length)))
+			(if (ct:cpointer= mapped-address ct:null)
+				nil
+				(values mapped-address (ct:cref (:unsigned-long *) length 0))))))
 
 (defun unmap-file (mapped-address)
-	(win:UnmapViewOfFile mapped-address))	
+	(cl::os-unmap-file mapped-address))
 
 (defpackage "ZLIB"
     (:export 

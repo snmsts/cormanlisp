@@ -2054,7 +2054,7 @@ VOID WINAPI DebugBreak();
 
 (ct:defun-dll system ((command-line (:char *)))
    :return-type :long
-   :library-name "msvcrt.dll"
+   :library-name cl::c-library
    :entry-name "system"
    :linkage-type :c)
 

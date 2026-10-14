@@ -277,6 +277,17 @@ extern bool osCreateDirectory(const char* path);
 //	directory.
 extern bool osMoveFile(const char* from, const char* to);
 
+//	Copies a file. If there is a file by the new name it is replaced, or
+//	else the copying fails, as asked.
+extern bool osCopyFile(const char* from, const char* to, bool replace);
+
+//	The contents of a file as memory which can be read, and how many bytes
+//	that is. Returns 0 on failure, and for an empty file.
+extern void* osMapFile(const char* path, unsigned long* size);
+
+//	Gives up what osMapFile() returned.
+extern bool osUnmapFile(void* address);
+
 //
 //	Looking through a directory for the names which match a pattern. The
 //	pattern is a path, in the last part of which * stands for any

@@ -45,10 +45,17 @@
           (vector-push-extend c result))))
     result))
 
-#! (:export nil :library "msvcrt")
-unsigned long strlen(const char *str);
-char *strcpy (char *destination, const char *source );
-!#
+(ct:defun-dll strlen ((str (:char *)))
+   :return-type :unsigned-long
+   :library-name cl::c-library
+   :entry-name "strlen"
+   :linkage-type :c)
+
+(ct:defun-dll strcpy ((destination (:char *)) (source (:char *)))
+   :return-type (:char *)
+   :library-name cl::c-library
+   :entry-name "strcpy"
+   :linkage-type :c)
 
 (ct::defun-direct-c-callback %indent-next-line ((context (:char *)))
   (if (not (ct::cpointer-null context))

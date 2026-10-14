@@ -128,6 +128,25 @@
    :kernel-name cl::%os-move-file
    :linkage-type :c)
 
+;;; Copies a file. If there is a file by the new name it is replaced if
+;;; REPLACE is not 0, or else the copying fails.
+(ct:defun-kernel os-copy-file ((from (:unsigned-char *)) (to (:unsigned-char *)) (replace :long))
+   :return-type :long-bool
+   :kernel-name cl::%os-copy-file
+   :linkage-type :c)
+
+;;; The contents of a file as memory which can be read, and how many bytes
+;;; that is. Returns a null pointer on failure, and for an empty file.
+(ct:defun-kernel os-map-file ((path (:unsigned-char *)) (size (:unsigned-long *)))
+   :return-type (:void *)
+   :kernel-name cl::%os-map-file
+   :linkage-type :c)
+
+(ct:defun-kernel os-unmap-file ((address (:void *)))
+   :return-type :long-bool
+   :kernel-name cl::%os-unmap-file
+   :linkage-type :c)
+
 ;;;
 ;;;	Looking through a directory for the names which match a pattern. The
 ;;;	pattern is a path, in the last part of which * stands for any characters

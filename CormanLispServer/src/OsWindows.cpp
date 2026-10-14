@@ -521,6 +521,35 @@ bool osFileTimeToTime(unsigned __int64 fileTime, OsTime* time)
 	return true;
 }
 
+bool osCopyFile(const char* from, const char* to, bool replace)
+{
+	return CopyFile(from, to, replace ? FALSE : TRUE) != 0;
+}
+
+void* osMapFile(const char* path, unsigned long* size)
+{
+	HANDLE file = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING,
+		FILE_ATTRIBUTE_NORMAL, NULL);
+	HANDLE mapping = NULL;
+	void* address = 0;
+	if (file == INVALID_HANDLE_VALUE)
+		return 0;
+	*size = GetFileSize(file, NULL);
+	if (*size != 0xffffffff)
+		mapping = CreateFileMapping(file, NULL, PAGE_READONLY, 0, 0, NULL);
+	CloseHandle(file);
+	if (!mapping)
+		return 0;
+	address = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
+	CloseHandle(mapping);
+	return address;
+}
+
+bool osUnmapFile(void* address)
+{
+	return UnmapViewOfFile(address) != 0;
+}
+
 bool osFlushInstructionCache()
 {
 	return FlushInstructionCache(GetCurrentProcess(), NULL, 0) != 0;

@@ -119,6 +119,34 @@
 					(return nil)))
 			(ct:free numbers))))
 
+;;; Files are copied, renamed and mapped into memory by the kernel, and
+;;; COMPILE-FILE reads its input as a mapped file.
+(with-open-file (s "test-copy-1.tmp" :direction :output :if-exists :supersede)
+	(dotimes (i 5000) (format s "line ~D~%" i)))
+(check "copying, renaming and mapping a file"
+	(and (ccl::copy-file "test-copy-1.tmp" "test-copy-2.tmp")
+		(ccl::copy-file "test-copy-1.tmp" "test-copy-2.tmp")
+		(not (ccl::copy-file "test-copy-0.tmp" "test-copy-2.tmp"))
+		(ccl::move-file "test-copy-2.tmp" "test-copy-3.tmp")
+		(not (probe-file "test-copy-2.tmp"))
+		(multiple-value-bind (address length)
+			(ccl:map-file "test-copy-3.tmp")
+			(and address
+				(= length (with-open-file (s "test-copy-1.tmp") (file-length s)))
+				(= (ct:cref (:unsigned-char *) address 0) 108)	; the letter l
+				(ccl:unmap-file address)))
+		(not (ccl:map-file "test-copy-0.tmp"))))
+(with-open-file (s "test-compile.tmp.lisp" :direction :output :if-exists :supersede)
+	(format s "(defun compiled-in-test (x) (* x 3))~%(defvar *compiled-in-test* (compiled-in-test 14))~%"))
+(check "COMPILE-FILE and loading what it wrote"
+	(let ((output (compile-file "test-compile.tmp.lisp")))
+		(and output
+			(load output)
+			(eql (symbol-value '*compiled-in-test*) 42)
+			(delete-file output))))
+(dolist (name '("test-copy-1.tmp" "test-copy-3.tmp" "test-compile.tmp.lisp"))
+	(when (probe-file name) (delete-file name)))
+
 (load "test/testkit.lisp")
 (load "test/test-sequences.lisp")
 (check "sequences" (zerop (test-sequences-module)))

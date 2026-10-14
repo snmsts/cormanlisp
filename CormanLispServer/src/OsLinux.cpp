@@ -1260,6 +1260,100 @@ bool osMoveFile(const char* from, const char* to)
 	return rename(from, to) == 0;
 }
 
+bool osCopyFile(const char* from, const char* to, bool replace)
+{
+	char buffer[0x4000];
+	struct stat status;
+	ssize_t count = 0;
+	int target = -1;
+	int source = open(from, O_RDONLY);
+	if (source < 0)
+		return false;
+
+	// what may be done with the file is copied too
+	if (fstat(source, &status) == 0 && !S_ISDIR(status.st_mode))
+		target = open(to, O_WRONLY | O_CREAT | (replace ? O_TRUNC : O_EXCL), status.st_mode & 0777);
+	if (target < 0)
+	{
+		close(source);
+		return false;
+	}
+	while ((count = read(source, buffer, sizeof(buffer))) > 0)
+	{
+		char* p = buffer;
+		while (count > 0)
+		{
+			ssize_t written = write(target, p, count);
+			if (written < 0)
+				break;
+			p += written;
+			count -= written;
+		}
+		if (count > 0)
+			break;
+	}
+	close(source);
+	return close(target) == 0 && count == 0;
+}
+
+//	What has to be known of a mapped file to give it up.
+struct MappedFile
+{
+	MappedFile* next;
+	void* address;
+	size_t size;
+};
+
+static MappedFile* MappedFiles = 0;
+static pthread_mutex_t MappedFilesLock = PTHREAD_MUTEX_INITIALIZER;
+
+void* osMapFile(const char* path, unsigned long* size)
+{
+	struct stat status;
+	void* address = MAP_FAILED;
+	MappedFile* mapped = 0;
+	int fd = open(path, O_RDONLY);
+	if (fd < 0)
+		return 0;
+	if (fstat(fd, &status) == 0 && S_ISREG(status.st_mode) && status.st_size > 0
+			&& (unsigned long long)status.st_size < 0xffffffffULL)
+		address = mmap(0, (size_t)status.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+	close(fd);
+	if (address == MAP_FAILED)
+		return 0;
+	mapped = (MappedFile*)malloc(sizeof(MappedFile));
+	mapped->address = address;
+	mapped->size = (size_t)status.st_size;
+	pthread_mutex_lock(&MappedFilesLock);
+	mapped->next = MappedFiles;
+	MappedFiles = mapped;
+	pthread_mutex_unlock(&MappedFilesLock);
+	*size = (unsigned long)status.st_size;
+	return address;
+}
+
+bool osUnmapFile(void* address)
+{
+	MappedFile* mapped = 0;
+	bool unmapped = false;
+	pthread_mutex_lock(&MappedFilesLock);
+	for (MappedFile** p = &MappedFiles; *p; p = &(*p)->next)
+	{
+		if ((*p)->address == address)
+		{
+			mapped = *p;
+			*p = mapped->next;
+			break;
+		}
+	}
+	pthread_mutex_unlock(&MappedFilesLock);
+	if (!mapped)
+		return false;
+	unmapped = munmap(mapped->address, mapped->size) == 0;
+	free(mapped);
+	return unmapped;
+}
+
 struct FileSearch
 {
 	DIR* directory;
