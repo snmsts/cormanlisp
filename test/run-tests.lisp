@@ -86,6 +86,15 @@
 								(decode-universal-time utime (if daylight-p (- zone 1) zone)))))
 					(return nil))))))
 
+;;; Running out of stack is a condition, and the stack can be run out
+;;; of again once its end has been protected again.
+(defun endless (n) (+ 1 (endless (+ n 1))))
+(check "running out of stack"
+	(dotimes (i 3 t)
+		(unless (handler-case (endless 0)
+					(storage-condition () (cl::protect-stack)))
+			(return nil))))
+
 (load "test/testkit.lisp")
 (load "test/test-sequences.lisp")
 (check "sequences" (zerop (test-sequences-module)))

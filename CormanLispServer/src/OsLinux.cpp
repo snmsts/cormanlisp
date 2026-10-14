@@ -147,11 +147,6 @@ bool osCanRead(const void* address, unsigned long size)
 	return readable;
 }
 
-bool osGuardPage(void* address)
-{
-	return false;		// not on this system yet
-}
-
 void* osHeapAllocate(unsigned long size)
 {
 	return malloc(size);
@@ -186,9 +181,11 @@ bool osFlushInstructionCache()
 //	Exceptions
 //
 //	What the processor traps on reaches the process as a signal, in the
-//	thread which did it and on that thread's stack. The handlers which the
-//	kernel has registered are asked about it as Windows would ask them.
+//	thread which did it. The handlers which the kernel has registered are
+//	asked about it as Windows would ask them, on that thread's stack.
 //
+static const int SuspendSignal = SIGUSR1;		// see osSuspendThread()
+
 static unsigned long exceptionCode(int signal, const siginfo_t* info)
 {
 	switch (signal)
@@ -217,19 +214,29 @@ static unsigned long exceptionCode(int signal, const siginfo_t* info)
 	return EXCEPTION_NONCONTINUABLE_EXCEPTION;
 }
 
-static void onSignal(int signal, siginfo_t* info, void* data)
+//	Lets the signal do what it does to a process which does not handle it.
+static void giveUp(int signal)
 {
-	// Lisp code runs parts of itself with the direction flag set, which
-	// compiled C++ code must never find set
-	__asm cld
+	struct sigaction action;
+	memset(&action, 0, sizeof(action));
+	action.sa_handler = SIG_DFL;
+	sigaction(signal, &action, 0);
+}
 
-	ucontext_t* user = (ucontext_t*)data;
+static void dispatch(int signal, siginfo_t* info, ucontext_t* user, unsigned long code)
+{
 	greg_t* r = user->uc_mcontext.gregs;
 	EXCEPTION_RECORD record;
 	CONTEXT context;
+	sigset_t suspend;
+
+	// from here on the thread can be stopped: see onSignal()
+	sigemptyset(&suspend);
+	sigaddset(&suspend, SuspendSignal);
+	pthread_sigmask(SIG_UNBLOCK, &suspend, 0);
 
 	memset(&record, 0, sizeof(record));
-	record.ExceptionCode = exceptionCode(signal, info);
+	record.ExceptionCode = code;
 	record.ExceptionAddress = (void*)r[REG_EIP];
 	if (record.ExceptionCode == EXCEPTION_ACCESS_VIOLATION)
 	{
@@ -260,12 +267,10 @@ static void onSignal(int signal, siginfo_t* info, void* data)
 	if (!DispatchException(&record, &context))
 	{
 		// nobody's: let it end the process, as it would have
-		struct sigaction action;
-		memset(&action, 0, sizeof(action));
-		action.sa_handler = SIG_DFL;
-		sigaction(signal, &action, 0);
+		giveUp(signal);
 		return;
 	}
+	pthread_sigmask(SIG_BLOCK, &suspend, 0);
 
 	// go on with the registers as the handlers have left them
 	r[REG_EDI] = context.Edi;
@@ -285,16 +290,43 @@ static void onSignal(int signal, siginfo_t* info, void* data)
 		user->uc_mcontext.fpregs->sw &= ~0x80ffUL;
 }
 
+//	See "The end of the stack".
+static char* ownStackFor(int signal, siginfo_t* info, ucontext_t* user, unsigned long* code);
+static void dispatchOn(char* stack, int signal, siginfo_t* info, ucontext_t* user,
+	unsigned long code);
+static char* const NoStack = (char*)-1;
+
+static void onSignal(int signal, siginfo_t* info, void* data)
+{
+	// Lisp code runs parts of itself with the direction flag set, which
+	// compiled C++ code must never find set
+	__asm cld
+
+	ucontext_t* user = (ucontext_t*)data;
+	unsigned long code = exceptionCode(signal, info);
+	char* stack = ownStackFor(signal, info, user, &code);
+	if (stack == NoStack)
+		giveUp(signal);
+	else if (stack)
+		dispatchOn(stack, signal, info, user, code);
+	else
+		dispatch(signal, info, user, code);
+}
+
 static bool installSignalHandlers()
 {
 	static const int signals[] = { SIGSEGV, SIGBUS, SIGILL, SIGTRAP, SIGFPE };
 	struct sigaction action;
 	memset(&action, 0, sizeof(action));
 	action.sa_sigaction = onSignal;
+
+	// see "The end of the stack" for these two
 	sigemptyset(&action.sa_mask);
+	sigaddset(&action.sa_mask, SuspendSignal);
+	action.sa_flags = SA_SIGINFO | SA_ONSTACK;
 
 	// a handler may itself touch a protected page of the heap
-	action.sa_flags = SA_SIGINFO | SA_NODEFER;
+	action.sa_flags |= SA_NODEFER;
 	for (unsigned i = 0; i < sizeof(signals) / sizeof(signals[0]); i++)
 		sigaction(signals[i], &action, 0);
 	return true;
@@ -461,6 +493,13 @@ struct Thread
 	sem_t stopped;			// the thread has stopped, and its registers are saved
 	sem_t goOn;
 	ucontext_t* registers;	// where they are saved while it is stopped
+
+	// for running out of stack: see "The end of the stack"
+	Thread* next;
+	char* stackTop;
+	char* stackReserve;		// where the stretch which cannot be touched starts
+	bool reserveOpen;		// it can be, the thread having run out of stack
+	char* signalStack;
 };
 
 static pthread_mutex_t ThreadsLock = PTHREAD_MUTEX_INITIALIZER;
@@ -499,14 +538,187 @@ static void release(Thread* t, bool ended, bool closed)
 	}
 }
 
+//
+//	The end of the stack
+//
+//	A thread which the kernel has created has a stretch near the end of its
+//	stack which cannot be touched. When the thread gets there it has run
+//	out of stack: the stretch is opened, for the thread to get out of that
+//	on, and the kernel is told of a stack overflow. osGuardPage() closes
+//	the stretch again.
+//
+//	A thread in that state has no stack to be told on, so these signals
+//	come in on a stack of their own, which is given up for as long as the
+//	handler runs: one which comes in meanwhile does not write over the
+//	first. That stack is left at once for the thread's own, because the
+//	garbage collector takes the stack of a thread which it has stopped to
+//	be in one piece. Until then the thread cannot be stopped.
+//
+static const unsigned long PageSize = 0x1000;
+static const unsigned long StackReserve = 0x10000;
+static const unsigned long SignalStackSize = 0x10000;
+
+static Thread* GuardedThreads = 0;
+
+static void guardStack(Thread* t)
+{
+	pthread_attr_t attributes;
+	void* lowest = 0;
+	size_t size = 0;
+	void* memory = 0;
+	stack_t stack;
+	if (pthread_getattr_np(pthread_self(), &attributes) != 0)
+		return;
+	pthread_attr_getstack(&attributes, &lowest, &size);
+	pthread_attr_destroy(&attributes);
+	if (size < 4 * StackReserve)
+		return;
+	memory = mmap(0, SignalStackSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	if (memory == MAP_FAILED)
+		return;
+	memset(&stack, 0, sizeof(stack));
+	stack.ss_sp = memory;
+	stack.ss_size = SignalStackSize;
+
+	// the lowest page may be one which the system itself keeps from being
+	// touched
+	if (sigaltstack(&stack, 0) != 0
+			|| mprotect((char*)lowest + PageSize, StackReserve, PROT_NONE) != 0)
+	{
+		stack.ss_flags = SS_DISABLE;
+		sigaltstack(&stack, 0);
+		munmap(memory, SignalStackSize);
+		return;
+	}
+	pthread_mutex_lock(&ThreadsLock);
+	t->stackTop = (char*)lowest + size;
+	t->stackReserve = (char*)lowest + PageSize;
+	t->reserveOpen = false;
+	t->signalStack = (char*)memory;
+	t->next = GuardedThreads;
+	GuardedThreads = t;
+	pthread_mutex_unlock(&ThreadsLock);
+}
+
+//	The stack goes back to the system as it came.
+static void unguardStack(Thread* t)
+{
+	stack_t stack;
+	if (!t->signalStack)
+		return;
+	pthread_mutex_lock(&ThreadsLock);
+	for (Thread** p = &GuardedThreads; *p; p = &(*p)->next)
+	{
+		if (*p == t)
+		{
+			*p = t->next;
+			break;
+		}
+	}
+	pthread_mutex_unlock(&ThreadsLock);
+	memset(&stack, 0, sizeof(stack));
+	stack.ss_flags = SS_DISABLE;
+	sigaltstack(&stack, 0);
+	munmap(t->signalStack, SignalStackSize);
+	mprotect(t->stackReserve, StackReserve, PROT_READ | PROT_WRITE);
+	t->signalStack = 0;
+}
+
+//	Where on the thread's own stack to go on handling a signal: 0 if the
+//	handler is on that stack as it is, NoStack if there is no room on it.
+//	Makes room, and a stack overflow of the signal, if the thread has just
+//	run out of stack.
+static char* ownStackFor(int signal, siginfo_t* info, ucontext_t* user, unsigned long* code)
+{
+	static const unsigned long room = 0x2000;
+	Thread* t = CurrentThread;
+	char* here = (char*)&t;
+	char* address = (char*)info->si_addr;
+	char* sp = (char*)user->uc_mcontext.gregs[REG_ESP];
+	char* end = 0;
+	if (!t || !t->signalStack || here < t->signalStack || here >= t->signalStack + SignalStackSize)
+		return 0;
+	if (signal == SIGSEGV && !t->reserveOpen
+			&& address >= t->stackReserve && address < t->stackReserve + StackReserve
+			&& mprotect(t->stackReserve, StackReserve, PROT_READ | PROT_WRITE) == 0)
+	{
+		t->reserveOpen = true;
+		*code = EXCEPTION_STACK_OVERFLOW;
+	}
+	end = t->reserveOpen ? t->stackReserve : t->stackReserve + StackReserve;
+	if (sp > t->stackTop || sp < end + room)
+		return NoStack;
+	return (char*)(((unsigned long)sp - 256) & ~15UL);
+}
+
+//	dispatch(), once the stack for signals has been left.
+static void dispatchWithoutSignalStack(int signal, siginfo_t* info, ucontext_t* user,
+	unsigned long code)
+{
+	Thread* t = CurrentThread;
+	stack_t stack;
+	memset(&stack, 0, sizeof(stack));
+	stack.ss_flags = SS_DISABLE;
+	sigaltstack(&stack, 0);
+	dispatch(signal, info, user, code);
+	stack.ss_sp = t->signalStack;
+	stack.ss_size = SignalStackSize;
+	stack.ss_flags = 0;
+	sigaltstack(&stack, 0);
+}
+
+//	Handles the signal with the stack pointer at the given address.
+static void dispatchOn(char* stack, int signal, siginfo_t* info, ucontext_t* user,
+	unsigned long code)
+{
+	__asm
+	{
+		mov		ebx, esp
+		mov		esp, stack
+		push	code
+		push	user
+		push	info
+		push	signal
+		call	dispatchWithoutSignalStack
+		mov		esp, ebx
+	}
+}
+
+bool osGuardPage(void* address)
+{
+	char* where = (char*)address;
+	char* here = (char*)&where;
+	bool closed = false;
+	pthread_mutex_lock(&ThreadsLock);
+	for (Thread* t = GuardedThreads; t; t = t->next)
+	{
+		if (where < t->stackReserve || where >= t->stackTop)
+			continue;
+
+		// not under the feet of the thread which asks
+		if (t->reserveOpen
+				&& (t != CurrentThread || here >= t->stackReserve + StackReserve + PageSize)
+				&& mprotect(t->stackReserve, StackReserve, PROT_NONE) == 0)
+		{
+			t->reserveOpen = false;
+			closed = true;
+		}
+		break;
+	}
+	pthread_mutex_unlock(&ThreadsLock);
+	return closed;
+}
+
 static void* threadMain(void* argument)
 {
 	Thread* t = (Thread*)argument;
 	CurrentThread = t;
 	t->id = osCurrentThreadId();
+	guardStack(t);
 	osSetEvent(t->started);
 	osWaitEvent(t->resumed, OsForever);
 	t->proc(t->argument);
+	unguardStack(t);
 	CurrentThread = 0;
 	release(t, true, false);
 	return 0;
@@ -542,9 +754,12 @@ void osCloseThread(OsThread thread)
 void osExitThread(unsigned code)
 {
 	Thread* t = CurrentThread;
-	CurrentThread = 0;
 	if (t)
+	{
+		unguardStack(t);
+		CurrentThread = 0;
 		release(t, true, false);
+	}
 	pthread_exit(0);
 }
 
@@ -593,8 +808,6 @@ void* osStackTop()
 //	waits to be told to go on; what the handler returns to is whatever
 //	those registers say by then.
 //
-static const int SuspendSignal = SIGUSR1;
-
 static void onSuspend(int /*signal*/, siginfo_t* /*info*/, void* data)
 {
 	__asm cld		// see onSignal()
