@@ -3108,6 +3108,25 @@ struct LispImageHeader
 };
 extern unsigned long KernelVersionID;
 
+#ifndef _WIN32
+//
+// This will return true if the file is one which the system can execute or
+// load: those of this system have no extension to tell them by, and start
+// alike.
+//
+int fileIsEXE(LispObj path)
+{
+    static const char start[4] = { 0x7f, 'E', 'L', 'F' };
+    char found[sizeof(start)];
+    FILE* file = 0;
+    size_t length = 0;
+    if (fopen_s(&file, (char*)byteArrayStart(path), "rb") != 0)
+        return 0;
+    length = fread(found, 1, sizeof(found), file);
+    fclose(file);
+    return length == sizeof(found) && memcmp(found, start, sizeof(start)) == 0;
+}
+#else
 //
 // This will return true if the file is a Portable Executable: either a .exe or .dll
 // For now, all it does is look at the extension to determine this.
@@ -3148,6 +3167,7 @@ int fileIsEXE(LispObj path)
     else
         return 0;
 }
+#endif
 
 static char ExePath[MAX_PATH];
 static int AppendPos = 0;
@@ -3319,16 +3339,43 @@ static int finishEXE(FILE* exe, char* sectionName)
     return 1;
 }
 #else
-//	The executable files of this system cannot hold a section of Lisp yet.
+//	An executable file of this system holds a section of Lisp after all
+//	that the system loads of it, and ends with where that section starts.
+struct LispSectionTrailer
+{
+    char mark[8];
+    unsigned long start;
+};
+
+static const char LispSectionMark[8] = { 'L', 'i', 's', 'p', 'H', 'e', 'a', 'p' };
+
 static FILE* openReadEXE(LispObj path, char* sectionName)
 {
-    return 0;
+    LispSectionTrailer trailer;
+    FILE* exe = 0;
+    if (fopen_s(&exe, (char*)byteArrayStart(nullTerminate(path)), "rb") != 0)
+        return 0;
+    if (fseek(exe, -(long)sizeof(trailer), SEEK_END) != 0
+        || fread(&trailer, 1, sizeof(trailer), exe) != sizeof(trailer)
+        || memcmp(trailer.mark, LispSectionMark, sizeof(trailer.mark)) != 0
+        || fseek(exe, (long)trailer.start, SEEK_SET) != 0)
+    {
+        fclose(exe);
+        return 0;
+    }
+    return exe;
 }
 
 static int finishEXE(FILE* exe, char* sectionName)
 {
+    LispSectionTrailer trailer;
+    size_t written = 0;
+    memcpy(trailer.mark, LispSectionMark, sizeof(trailer.mark));
+    trailer.start = AppendPos;
+    fseek(exe, 0, SEEK_END);
+    written = fwrite(&trailer, 1, sizeof(trailer), exe);
     fclose(exe);
-    return 0;
+    return written == sizeof(trailer);
 }
 #endif
 
@@ -3784,7 +3831,7 @@ void readImgFile(LispObj path, void (*readFn)(FILE*))
 	{
 		char inst_path[MAX_PATH + 1] = { 0 };
 		strcat_s(inst_path, sizeof(inst_path), CormanLispServerDirectory);
-		strcat_s(inst_path, sizeof(inst_path), "\\");
+		strcat_s(inst_path, sizeof(inst_path), "/");
 		strcat_s(inst_path, sizeof(inst_path), (char*)byteArrayStart(np));
 
 		err = fopen_s(&file, inst_path, "rb");

@@ -218,6 +218,12 @@
    :kernel-name cl::%os-exit-process
    :linkage-type :c)
 
+;;; Ends the thread which calls it. Does not return.
+(ct:defun-kernel os-exit-thread ((code :unsigned-long))
+   :return-type :void
+   :kernel-name cl::%os-exit-thread
+   :linkage-type :c)
+
 ;;;
 ;;;	Memory
 ;;;

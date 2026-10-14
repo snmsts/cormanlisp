@@ -50,6 +50,8 @@ void processAttach(HINSTANCE hInstance)
 	// setup the DLL directory
 	strcpy_s(CormanLispServerDirectory, sizeof(CormanLispServerDirectory), g_szFileName);
 	result = strrchr(CormanLispServerDirectory, '\\');
+	if (!result)
+		result = strrchr(CormanLispServerDirectory, '/');
 	if (result)
 		*result = 0;
 	else

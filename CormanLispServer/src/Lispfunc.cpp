@@ -4309,6 +4309,11 @@ static void lispOsExitProcess(unsigned long code)
 	osExitProcess(code);
 }
 
+static void lispOsExitThread(unsigned long code)
+{
+	osExitThread(code);
+}
+
 static unsigned long lispOsLastError()
 {
 	return osLastError();
@@ -4676,6 +4681,7 @@ FunctEntry functTable[] =
 	{	"%OS-HEAP-ALLOCATE",		(LispFunc)lispOsHeapAllocate	},
 	{	"%OS-HEAP-FREE",			(LispFunc)lispOsHeapFree	},
 	{	"%OS-EXIT-PROCESS",		(LispFunc)lispOsExitProcess	},
+	{	"%OS-EXIT-THREAD",			(LispFunc)lispOsExitThread	},
 	{	"%OS-LAST-ERROR",			(LispFunc)lispOsLastError	},
 	{	"%HARDWARE-GC",				Hardware_GC				},  // turn on or off hardware-assisted gc
 

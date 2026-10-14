@@ -12,6 +12,13 @@
 (in-package "CORMANLISP")
 (export 'SAVE-APPLICATION)
 
+;;; An application has the extension of an executable file, where such
+;;; files have one.
+#-os-windows
+(defun name-and-extension (filename)
+	(values filename ""))
+
+#+os-windows
 (defun name-and-extension (filename)
 	(let (name
 		 (extension (subseq filename (max (- (length filename) 4) 0) (length filename))))
@@ -42,11 +49,11 @@
 (defun %normalize-directory-name (path-namestring)
     (when (zerop (length path-namestring))
         (return-from %normalize-directory-name path-namestring))
-    (if (char= (aref path-namestring
+    (if (member (aref path-namestring
                         (1- (length path-namestring)))
-                 #\\)
+                 '(#\\ #\/))
         path-namestring
-        (concatenate 'string path-namestring "\\")))
+        (concatenate 'string path-namestring cl::os-directory-separator)))
 
 ;;;
 ;;;	Corman Lisp SAVE-APPLICATION function.
@@ -58,7 +65,8 @@
         (setf application-name (namestring application-name)))
 	(let ((application-file-name nil)
 		  (image-file-name nil)
-		  (boot-app-name (cond ((and console static) "clconsoleapp.exe")
+		  (boot-app-name (cond #-os-windows (t "cormanlisp")	;; the one program there is
+							   ((and console static) "clconsoleapp.exe")
 							   (console  "clconsole.exe")
 							   (acad2000 "cormanlisp15.arx")
 							   (acadr14  "cormanlisp14.arx")
@@ -85,18 +93,18 @@
 		;; copy the clboot.exe file
 		(if (probe-file application-file-name)
 			(delete-file application-file-name))	;; delete file if it already exists
-		(win32:CopyFile 
+		(cl::os-copy-file 
 			(ct:create-c-string (concatenate 'string
                                               (%normalize-directory-name *cormanlisp-server-directory*)
                                               boot-app-name))
 			(ct:create-c-string application-file-name)
-			t)
+			0)
 		(setf cl::*top-level*
 			#'(lambda ()
 				(catch 'common-lisp::%error
 					(catch :system-exception
 						(funcall start-function)))
-				(win32:ExitThread 1)))		;; application should call (ExitThread 0) on normal exit
+				(cl::os-exit-thread 1)))		;; application should call (ExitThread 0) on normal exit
 		(force-output)
 		(save-image image-file-name)
 		(setf cl::*top-level* save-top-level)
