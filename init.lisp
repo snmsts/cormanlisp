@@ -1,5 +1,5 @@
-(push-module-directory "MODULES")
-(push-module-directory "SYS")
+(push-module-directory "Modules")
+(push-module-directory "Sys")
 ;;(setf (current-directory) *cormanlisp-directory*)
 
 ;;; Use external WWW-browser for documentation lookups

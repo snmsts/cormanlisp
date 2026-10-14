@@ -548,8 +548,8 @@
 		 (close istream)
 		 count))
 
-(load "sys/cl-symbols.lisp")
-(load "sys/pl-symbols.lisp")
+(load "Sys/cl-symbols.lisp")
+(load "Sys/pl-symbols.lisp")
 (in-package :common-lisp)
 
 ;;; set up initial packages: 

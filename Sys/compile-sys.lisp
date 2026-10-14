@@ -12,9 +12,9 @@
     (terpri)
     (values))
 
-(progn (load "sys/load-sys.lisp")(values))
+(progn (load "Sys/load-sys.lisp")(values))
 (top-level)
-(progn (load "sys/load-sys2.lisp")(values))
+(progn (load "Sys/load-sys2.lisp")(values))
 
 (setf ccl::*save-relative-source-file-names* nil)    ;; after this, only store absolute paths
 (progn (in-package :user)(values))

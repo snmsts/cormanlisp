@@ -23,7 +23,7 @@
 
 (defun %absolute-pathname-p (pathname)
   (or (and (< 0 (length pathname))
-	   (char= #\\ (char pathname 0)))
+	   (member (char pathname 0) '(#\\ #\/)))
       (and (< 2 (length pathname))
 	   (string= ":\\" (subseq pathname 1 3)))))
 	   
@@ -55,8 +55,8 @@
 
 (defun ccl::push-module-directory (string)
   (assert (stringp string))
-  (unless (char= #\\ (char string (1- (length string))))
-    (setq string (concatenate 'string string "\\")))
+  (unless (member (char string (1- (length string))) '(#\\ #\/))
+    (setq string (concatenate 'string string cl::os-directory-separator)))
   (push (%absolutized-pathname string) *module-default-directories*))
 
 (defun %load-from-registered (module-name)
@@ -65,20 +65,23 @@
     (and entry
 	 (mapc #'load pathnames))))
 
+;;; The files of the modules have names in lower case, and a module is
+;;; mostly asked for by a symbol, whose name is in upper case.
 (defun %load-from-default (module-name)
-	(let ((filename-src (concatenate 'string module-name ".lisp"))
-		  (filename-binary (concatenate 'string module-name ".fasl"))
-		  fullname)
-		(dolist (dir *module-default-directories*)
-			(setq fullname (concatenate 'string dir filename-binary))
-			(when (probe-file fullname)
-				(load fullname)
-				(return-from %load-from-default t))
-			(setq fullname (concatenate 'string dir filename-src))
-			(when (probe-file fullname)
-				(load fullname)
-				(return-from %load-from-default t)))
-		nil))
+	(dolist (name (list module-name (string-downcase module-name)))
+		(let ((filename-src (concatenate 'string name ".lisp"))
+			  (filename-binary (concatenate 'string name ".fasl"))
+			  fullname)
+			(dolist (dir *module-default-directories*)
+				(setq fullname (concatenate 'string dir filename-binary))
+				(when (probe-file fullname)
+					(load fullname)
+					(return-from %load-from-default t))
+				(setq fullname (concatenate 'string dir filename-src))
+				(when (probe-file fullname)
+					(load fullname)
+					(return-from %load-from-default t)))))
+	nil)
 
 (defun require (module-name &optional pathname-list)
   (when (symbolp module-name)
