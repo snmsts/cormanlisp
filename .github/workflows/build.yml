@@ -1,0 +1,146 @@
+name: build
+
+# Builds and tests on Windows, with the Microsoft compiler and with clang-cl,
+# and on Linux. When a release is published, the Windows build of the
+# Microsoft compiler and the Linux build are attached to it.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows (${{ matrix.toolset }})
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        toolset: [msvc, clang-cl]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure (msvc)
+        if: matrix.toolset == 'msvc'
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A Win32
+
+      # clang-cl with the x86 libraries of Visual Studio, and Ninja
+      - name: Set up the x86 tools
+        if: matrix.toolset == 'clang-cl'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+
+      - name: Configure (clang-cl)
+        if: matrix.toolset == 'clang-cl'
+        run: >
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Standard
+          -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl
+          -DCMAKE_C_COMPILER_TARGET=i686-pc-windows-msvc
+          -DCMAKE_CXX_COMPILER_TARGET=i686-pc-windows-msvc
+
+      - name: Build
+        run: cmake --build build --config Standard
+
+      - name: Test
+        run: ctest --test-dir build -C Standard --output-on-failure
+
+      - name: Package
+        if: matrix.toolset == 'msvc'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = 'package\CormanLisp'
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          git archive --format=tar HEAD | tar -x -C $dir
+          $built = 'CormanLisp.exe', 'CormanLispServer.dll', 'clconsole.exe', 'clconsoleapp.exe',
+                   'clboot.exe', 'clbootapp.exe', 'dlltemplate.dll', 'CormanLisp.img'
+          foreach ($f in $built) { Copy-Item $f $dir }
+
+          # the Visual C++ runtime and MFC, which the programs are linked against as
+          # DLLs, from the Visual Studio which built them
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" `
+                  -version '[17.0,18.0)' -products * -latest -property installationPath
+          $redist = Get-ChildItem "$vs\VC\Redist\MSVC" -Directory | Where-Object Name -match '^\d' |
+                    Sort-Object { [version]$_.Name } | Select-Object -Last 1
+          foreach ($part in 'CRT', 'MFC') {
+            Get-ChildItem "$($redist.FullName)\x86" -Directory -Filter "Microsoft.VC*.$part" |
+              ForEach-Object { Copy-Item "$($_.FullName)\*.dll" $dir }
+          }
+          foreach ($dll in 'vcruntime140.dll', 'mfc140.dll') {
+            if (-not (Test-Path "$dir\$dll")) { throw "$dll is not in the package" }
+          }
+          Compress-Archive -Path $dir -DestinationPath CormanLisp-windows-x86.zip
+
+      - name: Keep the package
+        if: matrix.toolset == 'msvc'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: CormanLisp-windows-x86.zip
+
+  linux:
+    name: Linux
+    runs-on: ubuntu-24.04
+    container: debian:trixie
+    steps:
+      - name: Install the tools
+        run: |
+          dpkg --add-architecture i386
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git file \
+            clang cmake ninja-build gcc-i686-linux-gnu g++-i686-linux-gnu \
+            libc6:i386 libstdc++6:i386
+
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Standard \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_C_COMPILER_TARGET=i686-linux-gnu \
+            -DCMAKE_CXX_COMPILER_TARGET=i686-linux-gnu \
+            -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=i686
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          mkdir -p package/CormanLisp
+          git archive --format=tar HEAD | tar -x -C package/CormanLisp
+          cp cormanlisp CormanLisp.img package/CormanLisp/
+          tar -czf CormanLisp-linux-i686.tar.gz -C package CormanLisp
+
+      - name: Keep the package
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: CormanLisp-linux-i686.tar.gz
+
+  release:
+    name: Attach to the release
+    if: github.event_name == 'release'
+    needs: [windows, linux]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+
+      - name: Upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            windows/CormanLisp-windows-x86.zip linux/CormanLisp-linux-i686.tar.gz \
+            --repo "${{ github.repository }}" --clobber
