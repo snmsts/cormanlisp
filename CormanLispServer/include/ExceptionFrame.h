@@ -123,4 +123,14 @@ struct KernelCatch
 //	Does not return.
 extern void KernelThrow(unsigned long value);
 
+#ifndef _WIN32
+//
+//	Where the operating system does not go through the handlers itself:
+//	asks the ones which the calling thread has registered, the innermost
+//	first, about an exception. Returns true if one of them wants the thread
+//	to go on, with the registers as it has left them in the context.
+//
+extern bool DispatchException(EXCEPTION_RECORD* record, CONTEXT* context);
+#endif
+
 #endif // EXCEPTIONFRAME_H

@@ -25,6 +25,7 @@
 #include <ucontext.h>
 
 #include "Os.h"
+#include "ExceptionFrame.h"
 
 //
 //	Memory
@@ -180,6 +181,126 @@ bool osFlushInstructionCache()
 {
 	return true;		// nothing to do on this processor
 }
+
+//
+//	Exceptions
+//
+//	What the processor traps on reaches the process as a signal, in the
+//	thread which did it and on that thread's stack. The handlers which the
+//	kernel has registered are asked about it as Windows would ask them.
+//
+static unsigned long exceptionCode(int signal, const siginfo_t* info)
+{
+	switch (signal)
+	{
+	case SIGSEGV:
+	case SIGBUS:
+		return EXCEPTION_ACCESS_VIOLATION;
+	case SIGILL:
+		return info->si_code == ILL_PRVOPC || info->si_code == ILL_PRVREG ?
+			EXCEPTION_PRIV_INSTRUCTION : EXCEPTION_ILLEGAL_INSTRUCTION;
+	case SIGTRAP:
+		return info->si_code == TRAP_TRACE ? EXCEPTION_SINGLE_STEP : EXCEPTION_BREAKPOINT;
+	case SIGFPE:
+		switch (info->si_code)
+		{
+		case FPE_INTDIV:	return EXCEPTION_INT_DIVIDE_BY_ZERO;
+		case FPE_INTOVF:	return EXCEPTION_INT_OVERFLOW;
+		case FPE_FLTDIV:	return EXCEPTION_FLT_DIVIDE_BY_ZERO;
+		case FPE_FLTOVF:	return EXCEPTION_FLT_OVERFLOW;
+		case FPE_FLTUND:	return EXCEPTION_FLT_UNDERFLOW;
+		case FPE_FLTRES:	return EXCEPTION_FLT_INEXACT_RESULT;
+		case FPE_FLTSUB:	return EXCEPTION_ARRAY_BOUNDS_EXCEEDED;
+		default:			return EXCEPTION_FLT_INVALID_OPERATION;
+		}
+	}
+	return EXCEPTION_NONCONTINUABLE_EXCEPTION;
+}
+
+static void onSignal(int signal, siginfo_t* info, void* data)
+{
+	// Lisp code runs parts of itself with the direction flag set, which
+	// compiled C++ code must never find set
+	__asm cld
+
+	ucontext_t* user = (ucontext_t*)data;
+	greg_t* r = user->uc_mcontext.gregs;
+	EXCEPTION_RECORD record;
+	CONTEXT context;
+
+	memset(&record, 0, sizeof(record));
+	record.ExceptionCode = exceptionCode(signal, info);
+	record.ExceptionAddress = (void*)r[REG_EIP];
+	if (record.ExceptionCode == EXCEPTION_ACCESS_VIOLATION)
+	{
+		// whether it was a write, and the address which was not to be had
+		record.NumberParameters = 2;
+		record.ExceptionInformation[0] = (r[REG_ERR] & 2) ? 1 : 0;
+		record.ExceptionInformation[1] = (unsigned long)info->si_addr;
+	}
+
+	memset(&context, 0, sizeof(context));
+	context.SegGs = r[REG_GS];
+	context.SegFs = r[REG_FS];
+	context.SegEs = r[REG_ES];
+	context.SegDs = r[REG_DS];
+	context.Edi = r[REG_EDI];
+	context.Esi = r[REG_ESI];
+	context.Ebx = r[REG_EBX];
+	context.Edx = r[REG_EDX];
+	context.Ecx = r[REG_ECX];
+	context.Eax = r[REG_EAX];
+	context.Ebp = r[REG_EBP];
+	context.Eip = r[REG_EIP];
+	context.SegCs = r[REG_CS];
+	context.EFlags = r[REG_EFL];
+	context.Esp = r[REG_ESP];
+	context.SegSs = r[REG_SS];
+
+	if (!DispatchException(&record, &context))
+	{
+		// nobody's: let it end the process, as it would have
+		struct sigaction action;
+		memset(&action, 0, sizeof(action));
+		action.sa_handler = SIG_DFL;
+		sigaction(signal, &action, 0);
+		return;
+	}
+
+	// go on with the registers as the handlers have left them
+	r[REG_EDI] = context.Edi;
+	r[REG_ESI] = context.Esi;
+	r[REG_EBX] = context.Ebx;
+	r[REG_EDX] = context.Edx;
+	r[REG_ECX] = context.Ecx;
+	r[REG_EAX] = context.Eax;
+	r[REG_EBP] = context.Ebp;
+	r[REG_EIP] = context.Eip;
+	r[REG_EFL] = context.EFlags;
+	r[REG_ESP] = context.Esp;
+
+	// a floating point exception stays pending in the status word, and
+	// would be raised again by the next floating point instruction
+	if (signal == SIGFPE && user->uc_mcontext.fpregs)
+		user->uc_mcontext.fpregs->sw &= ~0x80ffUL;
+}
+
+static bool installSignalHandlers()
+{
+	static const int signals[] = { SIGSEGV, SIGBUS, SIGILL, SIGTRAP, SIGFPE };
+	struct sigaction action;
+	memset(&action, 0, sizeof(action));
+	action.sa_sigaction = onSignal;
+	sigemptyset(&action.sa_mask);
+
+	// a handler may itself touch a protected page of the heap
+	action.sa_flags = SA_SIGINFO | SA_NODEFER;
+	for (unsigned i = 0; i < sizeof(signals) / sizeof(signals[0]); i++)
+		sigaction(signals[i], &action, 0);
+	return true;
+}
+
+static const bool SignalHandlersInstalled = installSignalHandlers();
 
 //
 //	Thread slots
@@ -476,9 +597,7 @@ static const int SuspendSignal = SIGUSR1;
 
 static void onSuspend(int /*signal*/, siginfo_t* /*info*/, void* data)
 {
-	// Lisp code runs parts of itself with the direction flag set, which
-	// compiled C++ code must never find set
-	__asm cld
+	__asm cld		// see onSignal()
 
 	Thread* t = CurrentThread;
 	int error = errno;

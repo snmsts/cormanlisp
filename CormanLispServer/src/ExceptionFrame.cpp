@@ -70,6 +70,16 @@ static EXCEPTION_REGISTRATION_RECORD*& exceptionList()
 {
 	return ExceptionList;
 }
+
+bool DispatchException(EXCEPTION_RECORD* record, CONTEXT* context)
+{
+	for (EXCEPTION_REGISTRATION_RECORD* r = ExceptionList; r; r = r->Next)
+	{
+		if (r->Handler(record, r, context, 0) == ExceptionContinueExecution)
+			return true;
+	}
+	return false;
+}
 #endif
 
 static EXCEPTION_DISPOSITION __cdecl
