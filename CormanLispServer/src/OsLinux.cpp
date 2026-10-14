@@ -177,6 +177,13 @@ bool osFlushInstructionCache()
 	return true;		// nothing to do on this processor
 }
 
+bool osAllowExecution(void* address, unsigned long size)
+{
+	unsigned long start = (unsigned long)address & ~0xfffUL;
+	unsigned long end = ((unsigned long)address + size + 0xfff) & ~0xfffUL;
+	return mprotect((void*)start, end - start, PROT_READ | PROT_WRITE | PROT_EXEC) == 0;
+}
+
 //
 //	Exceptions
 //

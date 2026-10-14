@@ -526,6 +526,12 @@ bool osFlushInstructionCache()
 	return FlushInstructionCache(GetCurrentProcess(), NULL, 0) != 0;
 }
 
+bool osAllowExecution(void* address, unsigned long size)
+{
+	DWORD oldProtect = 0;
+	return VirtualProtect(address, size, PAGE_EXECUTE_READWRITE, &oldProtect) != 0;
+}
+
 OsThread osCreateThread(OsThreadProc proc, void* argument, unsigned long* id)
 {
 	unsigned int threadID = 0;

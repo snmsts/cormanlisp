@@ -131,6 +131,12 @@ extern void KernelThrow(unsigned long value);
 //	to go on, with the registers as it has left them in the context.
 //
 extern bool DispatchException(EXCEPTION_RECORD* record, CONTEXT* context);
+
+//
+//	Where the calling thread's list of handlers starts, for compiled Lisp
+//	code which registers one: it has no fs:[0] to find that at.
+//
+extern "C" EXCEPTION_REGISTRATION_RECORD** __cdecl ExceptionListHead();
 #endif
 
 #endif // EXCEPTIONFRAME_H

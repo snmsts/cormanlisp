@@ -56,6 +56,10 @@ extern bool osProtectMemory(void* address, unsigned long size, bool writable);
 //	is run.
 extern bool osFlushInstructionCache();
 
+//	Lets what is at the address be run as machine code, where it is memory
+//	which was not allocated for that.
+extern bool osAllowExecution(void* address, unsigned long size);
+
 //
 //	A slot which holds a value for each thread. The value is 0 in a
 //	thread which has not set it.

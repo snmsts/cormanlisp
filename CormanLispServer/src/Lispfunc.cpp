@@ -3501,6 +3501,7 @@ LispFunction(Create_Callback_Thunk)
 	*(unsigned char*)foreignPtr(thunkObj) = 0xA1;
 	*(unsigned long*)(((char*)foreignPtr(thunkObj)) + 1) = (unsigned long)SysGlobalsAddr;
 	*(long*)(((char*)foreignPtr(thunkObj)) + sizeGenericThunk - 4) = integer(index) + 4;
+	osAllowExecution((void*)foreignPtr(thunkObj), sizeGenericThunk);
 	osFlushInstructionCache();
 	LISP_FUNC_RETURN(thunkObj);
 }
@@ -4608,6 +4609,9 @@ FunctEntry functTable[] =
 	{	"EDITOR-REPLACE-SELECTION",	Editor_Replace_Selection},
 	{	"GET-CALLBACK",				Get_Callback			},	// redefined in lisp (in ffi.lisp)
 	{   "%HEAP_FAULT_HANDLER",		(LispFunc)Heap_Fault_Handler},	// not to be called directly from lisp
+#ifndef _WIN32
+	{   "%EXCEPTION-LIST-HEAD",		(LispFunc)ExceptionListHead},	// nor this
+#endif
 	{	"HEAP-USED",				Heap_Used				},
 	{	"CONTAINING-HEAP",			Containing_Heap			},
 	{	"REGISTRATION-INFO",		Registration_Info		},

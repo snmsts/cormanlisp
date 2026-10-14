@@ -95,6 +95,30 @@
 					(storage-condition () (cl::protect-stack)))
 			(return nil))))
 
+;;; C calls back into Lisp, which allocates enough there for the
+;;; garbage collector to run meanwhile.
+(ct:defun-dll c-qsort ((base (:void *)) (count :unsigned-long) (size :unsigned-long)
+		(compare (:void *)))
+	:return-type :void
+	:library-name #+os-windows "msvcrt.dll" #-os-windows "libc.so.6"
+	:entry-name "qsort"
+	:linkage-type :c)
+(defvar *compared* nil)
+(ct:defun-c-callback compare-longs ((a (:long *)) (b (:long *)))
+	(let ((x (ct:cref (:long *) a 0)) (y (ct:cref (:long *) b 0)))
+		(push (make-list 50 :initial-element (cons x y)) *compared*)
+		(when (> (length *compared*) 200) (setq *compared* nil))
+		(cond ((< x y) -1) ((> x y) 1) (t 0))))
+(check "callbacks from C"
+	(let* ((count 20000) (numbers (ct:malloc (* 4 count))))
+		(dotimes (i count) (setf (ct:cref (:long *) numbers i) (mod (* i 7919) 10007)))
+		(c-qsort numbers count 4 (ct:get-callback-procinst 'compare-longs))
+		(prog1
+			(dotimes (i (- count 1) t)
+				(when (> (ct:cref (:long *) numbers i) (ct:cref (:long *) numbers (+ i 1)))
+					(return nil)))
+			(ct:free numbers))))
+
 (load "test/testkit.lisp")
 (load "test/test-sequences.lisp")
 (check "sequences" (zerop (test-sequences-module)))

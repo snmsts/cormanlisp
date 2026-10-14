@@ -80,6 +80,11 @@ bool DispatchException(EXCEPTION_RECORD* record, CONTEXT* context)
 	}
 	return false;
 }
+
+EXCEPTION_REGISTRATION_RECORD** __cdecl ExceptionListHead()
+{
+	return &ExceptionList;
+}
 #endif
 
 static EXCEPTION_DISPOSITION __cdecl

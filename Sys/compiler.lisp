@@ -872,6 +872,43 @@
         })
     t)
    
+;;;
+;;;	A callback registers the handler for faults in the heap for as long as
+;;;	it runs: the thread it is called on may have none. On Windows the list
+;;;	of a thread's handlers starts at fs:[0]; elsewhere the kernel keeps
+;;;	the list, and tells where it starts.
+;;;
+(defcodegen link-heap-handler-in-kernel-list (form dest)
+	(declare (ignore form dest))
+	(parse-assembler
+		{
+            mov     eax, 'cl::%heap_fault_handler
+    		mov 	eax, [eax + (- (* 4 symbol-function-offset) uvector-tag)]
+    		mov 	eax, [eax - cons-tag]
+			push	[eax + (uvector-offset cl::function-code-buffer-offset)]	;; push handler
+			mov		eax, 'cl::%exception-list-head
+			mov		eax, [eax + (- (* 4 symbol-function-offset) uvector-tag)]
+			mov		eax, [eax - cons-tag]
+			call	[eax + (uvector-offset cl::function-code-buffer-offset)]	;; eax = start of the list
+			push	[eax]		;; push previous address
+			mov		[eax], esp
+		})
+	t)
+
+(defcodegen unlink-heap-handler-in-kernel-list (form dest)
+	(declare (ignore form dest))
+	(parse-assembler
+		{
+			mov		eax, 'cl::%exception-list-head
+			mov		eax, [eax + (- (* 4 symbol-function-offset) uvector-tag)]
+			mov		eax, [eax - cons-tag]
+			call	[eax + (uvector-offset cl::function-code-buffer-offset)]	;; eax = start of the list
+			mov		edx, [esp]		;; edx = previous handler
+			mov		[eax], edx		;; install previous handler
+			add		esp, 8			;; remove from stack
+		})
+	t)
+
 (defcodegen link-heap-handler (form dest)
 	(declare (ignore form dest))
 	(parse-assembler
