@@ -14,12 +14,15 @@
 #include <fnmatch.h>
 #include <malloc.h>
 #include <pwd.h>
+#include <semaphore.h>
+#include <signal.h>
 #include <time.h>
 #include <unistd.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/time.h>
+#include <ucontext.h>
 
 #include "Os.h"
 
@@ -330,18 +333,37 @@ struct Thread
 	OsEvent resumed;		// the thread may call proc
 	bool running;
 	bool closed;
+
+	// for stopping it: see osSuspendThread()
+	bool exists;			// there is a thread to send a signal to
+	int suspensions;
+	sem_t stopped;			// the thread has stopped, and its registers are saved
+	sem_t goOn;
+	ucontext_t* registers;	// where they are saved while it is stopped
 };
 
 static pthread_mutex_t ThreadsLock = PTHREAD_MUTEX_INITIALIZER;
 static __thread Thread* CurrentThread = 0;
 
 //	A Thread is done with when it has ended and has been closed.
+static Thread* newThread()
+{
+	Thread* t = (Thread*)malloc(sizeof(Thread));
+	memset(t, 0, sizeof(Thread));
+	sem_init(&t->stopped, 0, 0);
+	sem_init(&t->goOn, 0, 0);
+	return t;
+}
+
 static void release(Thread* t, bool ended, bool closed)
 {
 	bool done = false;
 	pthread_mutex_lock(&ThreadsLock);
 	if (ended)
+	{
 		t->running = false;
+		t->exists = false;
+	}
 	if (closed)
 		t->closed = true;
 	done = !t->running && t->closed;
@@ -350,6 +372,8 @@ static void release(Thread* t, bool ended, bool closed)
 	{
 		osCloseEvent(t->started);
 		osCloseEvent(t->resumed);
+		sem_destroy(&t->stopped);
+		sem_destroy(&t->goOn);
 		free(t);
 	}
 }
@@ -369,14 +393,13 @@ static void* threadMain(void* argument)
 
 OsThread osCreateThread(OsThreadProc proc, void* argument, unsigned long* id)
 {
-	Thread* t = (Thread*)malloc(sizeof(Thread));
-	t->id = 0;
+	Thread* t = newThread();
 	t->proc = proc;
 	t->argument = argument;
 	t->started = osCreateEvent(false);
 	t->resumed = osCreateEvent(false);
 	t->running = true;
-	t->closed = false;
+	t->exists = true;
 	if (pthread_create(&t->thread, 0, threadMain, t) != 0)
 	{
 		t->running = false;
@@ -421,16 +444,13 @@ unsigned long osCurrentThreadId()
 OsThread osOpenCurrentThread()
 {
 	// a thread which the kernel did not create: nothing ends this record
-	// for it, so closing it is what frees it
-	Thread* t = (Thread*)malloc(sizeof(Thread));
+	// for it, so closing it is what frees it, and the thread is not to be
+	// stopped after that
+	Thread* t = newThread();
 	t->thread = pthread_self();
 	t->id = osCurrentThreadId();
-	t->proc = 0;
-	t->argument = 0;
-	t->started = 0;
-	t->resumed = 0;
-	t->running = false;
-	t->closed = false;
+	t->exists = true;
+	CurrentThread = t;
 	return t;
 }
 
@@ -446,27 +466,127 @@ void* osStackTop()
 	return (char*)lowest + size;
 }
 
+//
+//	A thread is stopped by sending it a signal. In the handler it leaves
+//	word of where its registers were saved, says that it has stopped, and
+//	waits to be told to go on; what the handler returns to is whatever
+//	those registers say by then.
+//
+static const int SuspendSignal = SIGUSR1;
+
+static void onSuspend(int /*signal*/, siginfo_t* /*info*/, void* data)
+{
+	// Lisp code runs parts of itself with the direction flag set, which
+	// compiled C++ code must never find set
+	__asm cld
+
+	Thread* t = CurrentThread;
+	int error = errno;
+	if (!t)
+		return;
+	t->registers = (ucontext_t*)data;
+	sem_post(&t->stopped);
+	while (sem_wait(&t->goOn) != 0 && errno == EINTR)
+		;
+	t->registers = 0;
+	errno = error;
+}
+
+static bool installSuspendHandler()
+{
+	struct sigaction action;
+	memset(&action, 0, sizeof(action));
+	action.sa_sigaction = onSuspend;
+	sigemptyset(&action.sa_mask);
+	action.sa_flags = SA_SIGINFO | SA_RESTART;
+	sigaction(SuspendSignal, &action, 0);
+	return true;
+}
+
+static const bool SuspendHandlerInstalled = installSuspendHandler();
+
 bool osSuspendThread(OsThread thread)
 {
-	return false;		// not on this system yet
+	Thread* t = (Thread*)thread;
+	bool stop = false;
+	if (!t || t == CurrentThread)
+		return false;
+	pthread_mutex_lock(&ThreadsLock);
+	if (!t->exists)
+	{
+		pthread_mutex_unlock(&ThreadsLock);
+		return false;
+	}
+	stop = t->suspensions++ == 0;
+	if (stop && pthread_kill(t->thread, SuspendSignal) != 0)
+	{
+		t->suspensions--;
+		pthread_mutex_unlock(&ThreadsLock);
+		return false;
+	}
+	pthread_mutex_unlock(&ThreadsLock);
+	if (stop)
+	{
+		while (sem_wait(&t->stopped) != 0 && errno == EINTR)
+			;
+	}
+	return true;
 }
 
 void osResumeThread(OsThread thread)
 {
-	// all that can be resumed so far is a thread which has not run yet
 	Thread* t = (Thread*)thread;
-	if (t && t->resumed)
-		osSetEvent(t->resumed);
+	bool go = false;
+	if (!t)
+		return;
+	pthread_mutex_lock(&ThreadsLock);
+	if (t->suspensions > 0)
+		go = --t->suspensions == 0;
+	else if (t->resumed)
+		osSetEvent(t->resumed);		// a new thread, which has not run yet
+	pthread_mutex_unlock(&ThreadsLock);
+	if (go)
+		sem_post(&t->goOn);
 }
 
 bool osGetThreadRegisters(OsThread thread, OsRegisters* registers)
 {
-	return false;		// not on this system yet
+	Thread* t = (Thread*)thread;
+	greg_t* r = 0;
+	if (!t || !t->registers)
+		return false;
+	r = t->registers->uc_mcontext.gregs;
+	registers->eax = r[REG_EAX];
+	registers->ebx = r[REG_EBX];
+	registers->ecx = r[REG_ECX];
+	registers->edx = r[REG_EDX];
+	registers->esi = r[REG_ESI];
+	registers->edi = r[REG_EDI];
+	registers->ebp = r[REG_EBP];
+	registers->esp = r[REG_ESP];
+	registers->eip = r[REG_EIP];
+	registers->eflags = r[REG_EFL];
+	return true;
 }
 
 bool osSetThreadRegisters(OsThread thread, const OsRegisters* registers)
 {
-	return false;		// not on this system yet
+	Thread* t = (Thread*)thread;
+	greg_t* r = 0;
+	if (!t || !t->registers)
+		return false;
+	r = t->registers->uc_mcontext.gregs;
+	r[REG_EAX] = registers->eax;
+	r[REG_EBX] = registers->ebx;
+	r[REG_ECX] = registers->ecx;
+	r[REG_EDX] = registers->edx;
+	r[REG_ESI] = registers->esi;
+	r[REG_EDI] = registers->edi;
+	r[REG_EBP] = registers->ebp;
+	r[REG_ESP] = registers->esp;
+	r[REG_EIP] = registers->eip;
+	r[REG_EFL] = registers->eflags;
+	return true;
 }
 
 //
