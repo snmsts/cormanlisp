@@ -458,6 +458,7 @@ PORT: symbol, string or integer. TYPE: :stream (default) or :datagram."))
              (type (socket-type s))
              (soc (with-invalid-socket-check () (socket (symbol-value (getf addr :family)) (symbol-value type) 0))))
         (setf (socket-host-ipaddr s) addr (socket-descriptor s) soc)
+        #-os-windows (winsock::allow-address-reuse soc)
         (with-socket-error-check () (bind soc (addr-to-c addr) *addr-size*))
         (when (eq type 'sock_stream) (with-socket-error-check () (winsock::listen soc SOMAXCONN)))))
 

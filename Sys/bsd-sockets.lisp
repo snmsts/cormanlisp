@@ -50,6 +50,9 @@
 
 #define MSG_NOSIGNAL		0x4000
 
+#define SOL_SOCKET			1
+#define SO_REUSEADDR		2
+
 struct in_addr {
 	unsigned long S_addr;
 };
@@ -221,6 +224,15 @@ int getnameinfo(const sockaddr *sa, int salen, char *host, unsigned long hostlen
             (values (c-string-to-lisp-string host-text)
                     (when portp (setq serv-text (c-string-to-lisp-string serv-text)) (unless (numberp (parse-integer serv-text :junk-allowed t)) serv-text)))
             (when errorp (error "Socket error ~A." result)))))
+
+;;; A server can listen on a port again at once after it has stopped, while
+;;; the connections which it had wind down. The option of Windows by this
+;;; name lets another program take the port, which is why it is not set
+;;; there.
+(defun allow-address-reuse (s)
+	(with-fresh-foreign-block (on :long)
+		(setf (cref (:long *) on 0) 1)
+		(setsockopt s SOL_SOCKET SO_REUSEADDR on (sizeof :long))))
 
 (defun address-family-available-p (address-family)
 	(let ((s (socket address-family SOCK_STREAM 0)))
