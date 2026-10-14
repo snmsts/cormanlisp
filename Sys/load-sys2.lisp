@@ -52,7 +52,8 @@
 (load-file "Sys/win-conditions.lisp")
 (load-file "Sys/os.lisp")
 #+os-windows (load-file "Sys/com.lisp")
-(load-file "Sys/winsock.lisp")
+#+os-windows (load-file "Sys/winsock.lisp")
+#-os-windows (load-file "Sys/bsd-sockets.lisp")	; which is the package WINSOCK there
 (load-file "Sys/time.lisp")
 (load-file "Sys/math2.lisp")
 (load-file "Sys/filenames.lisp")
@@ -93,7 +94,7 @@
 (load-file "Sys/code-indenter.lisp")
 #+os-windows (load-file "Sys/context-menu.lisp")
 (load-file "Sys/setf-expander.lisp")
-#+os-windows (load-file "Sys/sockets.lisp")
+(load-file "Sys/sockets.lisp")
 (load-file "Sys/xp.lisp")
 (load-file "Sys/threads.lisp")
 (load-file "Sys/version.lisp")

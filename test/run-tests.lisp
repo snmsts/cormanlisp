@@ -147,6 +147,47 @@
 (dolist (name '("test-copy-1.tmp" "test-copy-3.tmp" "test-compile.tmp.lisp"))
 	(when (probe-file name) (delete-file name)))
 
+;;; A connection over the loopback interface, and a datagram.
+(defvar *socket-server* nil)
+(th:create-thread
+	(lambda ()
+		(setq *socket-server*
+			(handler-case
+				(sockets:with-server-socket (s :host "127.0.0.1" :port 18431)
+					(setq *socket-server* :listening)
+					(let ((rs (sockets:accept-socket s)))
+						(sockets:write-socket-line rs
+							(format nil "echo: ~A" (sockets:read-socket-line rs)))
+						(sockets:close-socket rs)
+						:done))
+				(error (c) c)))))
+(dotimes (i 50) (when *socket-server* (return)) (sleep 0.1))
+(check "sockets: a connection"
+	(and (equal (ignore-errors
+					(sockets:with-client-socket (c :host "127.0.0.1" :port 18431)
+						(sockets:write-socket-line c "hello")
+						(sockets:read-socket-line c)))
+				"echo: hello")
+		(dotimes (i 50) (when (eq *socket-server* :done) (return t)) (sleep 0.1))))
+;;; The threads end before a check is written, so that what is written
+;;; when a thread ends does not come in the middle of it.
+(defvar *datagram-server* nil)
+(th:create-thread
+	(lambda ()
+		(ignore-errors
+			(sockets:with-server-socket (s :host "127.0.0.1" :port 18432 :type :datagram)
+				(multiple-value-bind (string address) (sockets:receive-from s)
+					(sockets:send-to s (format nil "got ~A" string) :to address))))
+		(setq *datagram-server* :done)))
+(sleep 1)
+(let ((answer (ignore-errors
+				(sockets:with-client-socket (c :host "127.0.0.1" :port 18432 :type :datagram)
+					(sockets:send-to c "ping")
+					(sockets:receive-from c)))))
+	(dotimes (i 50) (when *datagram-server* (return)) (sleep 0.1))
+	(sleep 0.5)
+	(check "sockets: a datagram" (equal answer "got ping")))
+
 (load "test/testkit.lisp")
 (load "test/test-sequences.lisp")
 (check "sequences" (zerop (test-sequences-module)))
