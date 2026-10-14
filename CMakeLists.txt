@@ -106,6 +106,8 @@ else()
     # that can be loaded anywhere does not know.
     add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:-fasm-blocks;-fdeclspec;-fno-pic>")
     add_link_options(-no-pie)
+    # Universal time starts in 1900 and does not end in 2038.
+    add_compile_definitions(_FILE_OFFSET_BITS=64 _TIME_BITS=64)
   endif()
 endif()
 if(WIN32)

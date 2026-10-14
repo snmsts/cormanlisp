@@ -801,8 +801,9 @@ bool osTimeToFileTime(const OsTime* time, unsigned __int64* fileTime)
 	parts.tm_hour = time->hour;
 	parts.tm_min = time->minute;
 	parts.tm_sec = time->second;
+	errno = 0;
 	seconds = timegm(&parts);
-	if (seconds == (time_t)-1)
+	if (seconds == (time_t)-1 && errno != 0)	// the second before 1970 is -1 too
 		return false;
 	*fileTime = ((unsigned __int64)((__int64)seconds + (__int64)SecondsTo1970)) * 10000000
 		+ (unsigned __int64)time->milliseconds * 10000;
