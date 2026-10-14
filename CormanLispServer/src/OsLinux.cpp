@@ -774,26 +774,10 @@ long osSecondsSince1970()
 	return (long)time(0);
 }
 
-bool osTimeZone(long* minutesWest, bool* daylight)
-{
-	time_t now = time(0);
-	struct tm parts;
-	if (!localtime_r(&now, &parts))
-		return false;
-	*daylight = parts.tm_isdst > 0;
-
-	// without what daylight saving time adds, as Windows counts it
-	*minutesWest = -(parts.tm_gmtoff / 60) + (*daylight ? 60 : 0);
-	return true;
-}
-
-//	The seconds from the start of 1601 to the start of 1970.
-static const unsigned __int64 SecondsTo1970 = 11644473600ULL;
-
-bool osTimeToFileTime(const OsTime* time, unsigned __int64* fileTime)
+//	The seconds since the start of 1970 at a universal time.
+static bool toSeconds(const OsTime* time, time_t* seconds)
 {
 	struct tm parts;
-	time_t seconds = 0;
 	memset(&parts, 0, sizeof(parts));
 	parts.tm_year = time->year - 1900;
 	parts.tm_mon = time->month - 1;
@@ -802,8 +786,34 @@ bool osTimeToFileTime(const OsTime* time, unsigned __int64* fileTime)
 	parts.tm_min = time->minute;
 	parts.tm_sec = time->second;
 	errno = 0;
-	seconds = timegm(&parts);
-	if (seconds == (time_t)-1 && errno != 0)	// the second before 1970 is -1 too
+	*seconds = timegm(&parts);
+	return *seconds != (time_t)-1 || errno == 0;	// the second before 1970 is -1 too
+}
+
+bool osTimeZone(const OsTime* universal, long* secondsWest, bool* daylight,
+	char* name, unsigned long nameSize)
+{
+	time_t seconds = 0;
+	struct tm parts;
+	if (!toSeconds(universal, &seconds) || !localtime_r(&seconds, &parts))
+		return false;
+	*secondsWest = -parts.tm_gmtoff;
+	*daylight = parts.tm_isdst > 0;
+	if (name && nameSize > 0)
+	{
+		if (!parts.tm_zone || strcpy_s(name, nameSize, parts.tm_zone) != 0)
+			name[0] = 0;
+	}
+	return true;
+}
+
+//	The seconds from the start of 1601 to the start of 1970.
+static const unsigned __int64 SecondsTo1970 = 11644473600ULL;
+
+bool osTimeToFileTime(const OsTime* time, unsigned __int64* fileTime)
+{
+	time_t seconds = 0;
+	if (!toSeconds(time, &seconds))
 		return false;
 	*fileTime = ((unsigned __int64)((__int64)seconds + (__int64)SecondsTo1970)) * 10000000
 		+ (unsigned __int64)time->milliseconds * 10000;

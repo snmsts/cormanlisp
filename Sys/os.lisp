@@ -177,10 +177,14 @@
    :kernel-name cl::%os-performance-frequency
    :linkage-type :c)
 
-;;; How many minutes local time is behind universal time, and whether
-;;; daylight saving time is in effect (1 or 0). Returns NIL if that is not
-;;; known.
-(ct:defun-kernel os-time-zone ((minutes-west (:long *)) (daylight (:long *)))
+;;; What local time is at the universal time with the given parts: how many
+;;; seconds it is behind universal time, daylight saving time counted in,
+;;; whether daylight saving time is in effect (1 or 0), and what the zone is
+;;; called then. Returns NIL if that is not known.
+(ct:defun-kernel os-time-zone ((year :long) (month :long) (day :long)
+		(hour :long) (minute :long) (second :long)
+		(seconds-west (:long *)) (daylight (:long *))
+		(name (:unsigned-char *)) (name-size :unsigned-long))
    :return-type :long-bool
    :kernel-name cl::%os-time-zone
    :linkage-type :c)

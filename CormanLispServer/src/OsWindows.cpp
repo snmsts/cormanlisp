@@ -450,33 +450,63 @@ long osSecondsSince1970()
 	return (long)now.time;
 }
 
-bool osTimeZone(long* minutesWest, bool* daylight)
+static void toSystemTime(const OsTime* time, SYSTEMTIME* to)
 {
-	TIME_ZONE_INFORMATION tzi;
-	DWORD result = GetTimeZoneInformation(&tzi);
-	if (result == 0xffffffff)
+	to->wYear = (short)time->year;
+	to->wMonth = (short)time->month;
+	to->wDayOfWeek = (short)time->dayOfWeek;
+	to->wDay = (short)time->day;
+	to->wHour = (short)time->hour;
+	to->wMinute = (short)time->minute;
+	to->wSecond = (short)time->second;
+	to->wMilliseconds = (short)time->milliseconds;
+}
+
+static bool toFileTime(const SYSTEMTIME* from, unsigned __int64* fileTime)
+{
+	FILETIME to = {0};
+	if (!SystemTimeToFileTime(from, &to))
 		return false;
-	*minutesWest = tzi.Bias;
-	*daylight = (result == TIME_ZONE_ID_DAYLIGHT);
+	*fileTime = ((unsigned __int64)to.dwHighDateTime << 32) | to.dwLowDateTime;
+	return true;
+}
+
+bool osTimeZone(const OsTime* universal, long* secondsWest, bool* daylight,
+	char* name, unsigned long nameSize)
+{
+	TIME_ZONE_INFORMATION zone;
+	SYSTEMTIME there = {0};
+	SYSTEMTIME here = {0};
+	unsigned __int64 thereTime = 0;
+	unsigned __int64 hereTime = 0;
+	toSystemTime(universal, &there);
+
+	// by the rules of that year, which need not be those of this year
+	if (!GetTimeZoneInformationForYear(there.wYear, NULL, &zone)
+			|| !SystemTimeToTzSpecificLocalTime(&zone, &there, &here)
+			|| !toFileTime(&there, &thereTime)
+			|| !toFileTime(&here, &hereTime))
+		return false;
+	*secondsWest = (long)((__int64)(thereTime - hereTime) / 10000000);
+
+	// a zone which never has daylight saving time has no date for it
+	*daylight = zone.DaylightDate.wMonth != 0
+		&& *secondsWest != (zone.Bias + zone.StandardBias) * 60;
+	if (name && nameSize > 0)
+	{
+		if (!WideCharToMultiByte(CP_ACP, 0,
+				*daylight ? zone.DaylightName : zone.StandardName, -1,
+				name, (int)nameSize, NULL, NULL))
+			name[0] = 0;
+	}
 	return true;
 }
 
 bool osTimeToFileTime(const OsTime* time, unsigned __int64* fileTime)
 {
 	SYSTEMTIME from = {0};
-	FILETIME to = {0};
-	from.wYear = (short)time->year;
-	from.wMonth = (short)time->month;
-	from.wDayOfWeek = (short)time->dayOfWeek;
-	from.wDay = (short)time->day;
-	from.wHour = (short)time->hour;
-	from.wMinute = (short)time->minute;
-	from.wSecond = (short)time->second;
-	from.wMilliseconds = (short)time->milliseconds;
-	if (!SystemTimeToFileTime(&from, &to))
-		return false;
-	*fileTime = ((unsigned __int64)to.dwHighDateTime << 32) | to.dwLowDateTime;
-	return true;
+	toSystemTime(time, &from);
+	return toFileTime(&from, fileTime);
 }
 
 bool osFileTimeToTime(unsigned __int64 fileTime, OsTime* time)

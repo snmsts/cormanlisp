@@ -191,9 +191,12 @@ extern void osUniversalTime(OsTime* time);
 extern void osLocalTime(OsTime* time);
 extern long osSecondsSince1970();
 
-//	How many minutes local time is behind universal time, and whether
-//	daylight saving time is in effect. Returns false if that is not known.
-extern bool osTimeZone(long* minutesWest, bool* daylight);
+//	What local time is at the given universal time: how many seconds it is
+//	behind universal time, daylight saving time counted in, whether daylight
+//	saving time is in effect, and, if there is room for a name, what the
+//	zone is called then. Returns false if that is not known.
+extern bool osTimeZone(const OsTime* universal, long* secondsWest, bool* daylight,
+	char* name, unsigned long nameSize);
 
 //	A file time counts the tenths of a microsecond since the start of 1601,
 //	universal time.

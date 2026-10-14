@@ -91,6 +91,26 @@ BOOL WINAPI QueryPerformanceFrequency(PLARGE_INTEGER);
 		(apply #'system-time-to-file-time (get-system-time))))
 
 ;;;
+;;;	Returns what local time is at the given universal time:
+;;;    how many seconds it is behind universal time, daylight time counted in
+;;;    daylight-flag (t if daylight time, nil if standard time)
+;;;    time-zone-name (string)
+;;;	Where the system cannot tell, local time is universal time.
+;;;
+(defun local-time-offset (utime)
+	(let ((stime (file-time-to-system-time (universal-time-to-file-time utime))))
+		(ct:with-fresh-foreign-block (seconds-west :long)
+			(ct:with-fresh-foreign-block (daylight :long)
+				(ct:with-fresh-foreign-block (name '(:char 128))
+					(if (os-time-zone (first stime) (second stime) (fourth stime)
+							(fifth stime) (sixth stime) (seventh stime)
+							seconds-west daylight name 128)
+						(values (ct:cref (:long *) seconds-west 0)
+								(/= (ct:cref (:long *) daylight 0) 0)
+								(ct:c-string-to-lisp-string name))
+						(values 0 nil "Unknown")))))))
+
+;;;
 ;;;	Common Lisp DECODE-UNIVERSAL-TIME function.
 ;;;	Usage: (DECODE-UNIVERSAL-TIME universal-time &optional time-zone)
 ;;;		=> second, minute, hour, date, month, year, day, daylight-p, zone
@@ -109,24 +129,18 @@ BOOL WINAPI QueryPerformanceFrequency(PLARGE_INTEGER);
 
 		(unless (and (integerp utime) (>= utime 0))
 			(error "Invalid universal time: ~A" utime))
-		(multiple-value-bind (time-zone-offset daylight)
-			(local-time-zone)
-			(unless zone 
-				(setq zone time-zone-offset)
-				(setq daylight-p daylight)))
-        
-        ;; Apparently this function is supposed to return a time zone offset
-        ;; which is independent of daylight time i.e. a value valid all year.
-        ;; Therefore if daylight is true, we add an hour to the time zone offset to
-        ;; get us to the correct value to return. Apparently daylight is always a
-        ;; whole hour offset (hopefully).
-        ;;
-        (when daylight-p
-            (incf zone)
-            (if (>= zone 24)
-                (decf zone 24)))
-        
-		(decf utime (* zone 3600))
+		(if zone
+			(decf utime (* zone 3600))
+			(multiple-value-bind (seconds-west daylight)
+				(local-time-offset utime)
+				(setq daylight-p daylight)
+				(decf utime seconds-west)
+
+				;; The time zone which is returned does not include daylight
+				;; time, which is taken to be an hour, as those who look at
+				;; DAYLIGHT-P and ZONE take it to be.
+				(setq zone (/ (+ seconds-west (if daylight 3600 0)) 3600))))
+
 		(setq stime (file-time-to-system-time 
 						(universal-time-to-file-time utime)))
 		(setq year (first stime))
@@ -148,7 +162,6 @@ BOOL WINAPI QueryPerformanceFrequency(PLARGE_INTEGER);
 ;;;
 (defun encode-universal-time (second minute hour date month year
 			&optional time-zone)
-	(unless time-zone (setf time-zone (local-time-zone)))
 	(if (<= 0 year 99)
 		(if (>= year 50) 
 			(setq year (+ 1900 year))
@@ -156,8 +169,14 @@ BOOL WINAPI QueryPerformanceFrequency(PLARGE_INTEGER);
 	(let ((utime (file-time-to-universal-time
 			(system-time-to-file-time year month 0 
 				date hour minute second 0))))
-		(if time-zone (incf utime (* 3600 time-zone)))
-		utime))
+		(if time-zone
+			(+ utime (* 3600 time-zone))
+
+			;; How far local time was behind then is not known before the
+			;; universal time is: the first answer gets near enough to it
+			;; for the second one to be that of the right side of a change
+			;; to or from daylight time.
+			(+ utime (local-time-offset (+ utime (local-time-offset utime)))))))
 
 ;;;
 ;;;	Common Lisp GET-DECODED-TIME function.
@@ -168,8 +187,6 @@ BOOL WINAPI QueryPerformanceFrequency(PLARGE_INTEGER);
 (defconstant month-names #("January" "February" "March" "April" "May"
 	"June" "July" "August" "September" "October" "November" "December"))
 
-(defvar local-time-zone-name nil)
-
 ;;;
 ;;;	Corman Lisp FORMAT-UNIVERSAL-TIME function.
 ;;;
@@ -178,57 +195,26 @@ BOOL WINAPI QueryPerformanceFrequency(PLARGE_INTEGER);
 					month year day-of-week
 					daylight-p time-zone)
 		(decode-universal-time time)
-		(declare (ignore second day-of-week time-zone))
-		(format stream "~2,'0D:~2,'0D ~A ~A ~A, ~A ~A~AT"
+		(declare (ignore second day-of-week daylight-p time-zone))
+		(format stream "~2,'0D:~2,'0D ~A ~A ~A, ~A ~A"
 			(if (= hour 0) 12 (if (> hour 12) (- hour 12) hour))
 			minute
 			(if (= hour 0) "AM" (if (>= hour 12) "PM" "AM"))
 			(aref month-names (- month 1))
 			date
 			year
-			local-time-zone-name
-			(if daylight-p "D" "S"))))
+			(nth-value 2 (local-time-offset time)))))
 
 ;;;
-;;;	Returns three values: 
-;;;    the bias (in hours)
+;;;	Returns three values, for the time it is now: 
+;;;    the bias (in hours), daylight time counted in
 ;;;    daylight-flag (t if daylight time, nil if standard time)
 ;;;    time-zone-name (string)
 ;;;                    
-#-os-windows
 (defun cl::local-time-zone ()
-	(ct:with-fresh-foreign-block (minutes-west :long)
-		(ct:with-fresh-foreign-block (daylight :long)
-			(if (os-time-zone minutes-west daylight)
-				(let* ((daylight-p (/= (ct:cref (:long *) daylight 0) 0))
-					   (name (if daylight-p "Daylight" "Standard")))
-					(unless local-time-zone-name
-						(setf local-time-zone-name name))
-					(values (- (truncate (ct:cref (:long *) minutes-west 0) 60) (if daylight-p 1 0))
-							daylight-p
-							name))
-				(values 0 nil "Unknown")))))
-
-#+os-windows
-(defun cl::local-time-zone ()
-	(ct:with-fresh-foreign-block (tzi 'win:TIME_ZONE_INFORMATION)
-		(ct:with-c-struct (s tzi win:TIME_ZONE_INFORMATION)
-			(let ((result (win:GetTimeZoneInformation tzi)))
-				(cond
-					((or (= result win:TIME_ZONE_ID_INVALID) (= result win:TIME_ZONE_ID_UNKNOWN))
-					 (values 0 nil "Unknown"))
-					((= result win:TIME_ZONE_ID_STANDARD)
-					 (unless local-time-zone-name
-						(setf local-time-zone-name (ct:c-string-to-lisp-string win::StandardName)))
-					 (values (truncate win::Bias 60)
-							 nil 
-							(ct:c-string-to-lisp-string win::StandardName)))
-					((= result win:TIME_ZONE_ID_DAYLIGHT)
-					 (unless local-time-zone-name
-					 	(setf local-time-zone-name (ct:c-string-to-lisp-string win::DaylightName)))
-					 (values (- (truncate win::Bias 60) 1)
-							 t 
-							(ct:c-string-to-lisp-string win::DaylightName))))))))
+	(multiple-value-bind (seconds-west daylight-p name)
+		(local-time-offset (get-universal-time))
+		(values (/ seconds-west 3600) daylight-p name)))
 
 
 ;;;

@@ -3065,14 +3065,16 @@ LispFunction(Get_Universal_Time)
 LispFunction(Local_Time_Zone)
 {
 	LISP_FUNC_BEGIN(0);
+	OsTime now;
 	long bias = 0;
 	bool daylight = false;
 	LispObj daylight_time = NIL;
-	if (!osTimeZone(&bias, &daylight))
+	osUniversalTime(&now);
+	if (!osTimeZone(&now, &bias, &daylight, 0, 0))
 		ret = 0;			// we can't determine it
 	else
 	{
-		ret = _Divide(wrapInteger(bias), wrapInteger(60));
+		ret = _Divide(wrapInteger(bias), wrapInteger(3600));
 		if (daylight)
 			daylight_time = T;
 	}
@@ -4227,10 +4229,18 @@ static void lispOsPerformanceFrequency(__int64* frequency)
 	*frequency = osPerformanceFrequency();
 }
 
-static long lispOsTimeZone(long* minutesWest, long* daylight)
+static long lispOsTimeZone(long year, long month, long day, long hour, long minute,
+	long second, long* secondsWest, long* daylight, char* name, unsigned long nameSize)
 {
+	OsTime universal = {0};
 	bool isDaylight = false;
-	if (!osTimeZone(minutesWest, &isDaylight))
+	universal.year = year;
+	universal.month = month;
+	universal.day = day;
+	universal.hour = hour;
+	universal.minute = minute;
+	universal.second = second;
+	if (!osTimeZone(&universal, secondsWest, &isDaylight, name, nameSize))
 		return 0;
 	*daylight = isDaylight ? 1 : 0;
 	return 1;

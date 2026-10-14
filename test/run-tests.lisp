@@ -42,6 +42,50 @@
 (check "floats computed during a garbage collection"
 	(let ((x 1.5d0)) (dotimes (i 600000 t) (unless (= (+ x 1d0) 2.5d0) (return nil)))))
 
+;;; Local time used to be universal time where the clock is never
+;;; changed, an hour behind while daylight saving time was in effect,
+;;; and in a zone of whole hours.
+(check "DECODE-UNIVERSAL-TIME, a given time zone"
+	(and (equal (multiple-value-list (decode-universal-time 0 0))
+				'(0 0 0 1 1 1900 0 nil 0))
+		(equal (multiple-value-list (decode-universal-time 3900000000 0))
+				'(0 20 21 2 8 2023 2 nil 0))
+		(equal (multiple-value-list (decode-universal-time 3900000000 -11/2))
+				'(0 50 2 3 8 2023 3 nil -11/2))
+		(equal (multiple-value-list (decode-universal-time 3900000000 8))
+				'(0 20 13 2 8 2023 2 nil 8))))
+(check "ENCODE-UNIVERSAL-TIME, a given time zone"
+	(and (= (encode-universal-time 0 0 0 1 1 1900 0) 0)
+		(= (encode-universal-time 0 20 21 2 8 2023 0) 3900000000)
+		(= (encode-universal-time 0 50 2 3 8 2023 -11/2) 3900000000)
+		(= (encode-universal-time 0 20 13 2 8 2023 8) 3900000000)))
+(check "local time is what the system says it is"
+	(let ((system (cl::get-local-time)))
+		(multiple-value-bind (second minute hour date month year)
+			(get-decoded-time)
+			(< (abs (- (encode-universal-time second minute hour date month year 0)
+						(encode-universal-time (seventh system) (sixth system)
+							(fifth system) (fourth system) (second system)
+							(first system) 0)))
+				60))))
+(check "local time, there and back"
+	(dotimes (i 24 t)
+		(let ((utime (encode-universal-time 0 30 12 15 (+ (mod i 12) 1) (+ 2024 (floor i 12)))))
+			(multiple-value-bind (second minute hour date month year)
+				(decode-universal-time utime)
+				(unless (and (= second 0) (= minute 30) (= hour 12) (= date 15)
+							(= month (+ (mod i 12) 1)) (= year (+ 2024 (floor i 12))))
+					(return nil))))))
+(check "local time, the zone and daylight saving time"
+	(dotimes (i 24 t)
+		(let ((utime (encode-universal-time 0 30 12 15 (+ (mod i 12) 1) (+ 2024 (floor i 12)) 0)))
+			(multiple-value-bind (second minute hour date month year day daylight-p zone)
+				(decode-universal-time utime)
+				(unless (equal (list second minute hour date month year day nil)
+							(butlast (multiple-value-list
+								(decode-universal-time utime (if daylight-p (- zone 1) zone)))))
+					(return nil))))))
+
 (load "test/testkit.lisp")
 (load "test/test-sequences.lisp")
 (check "sequences" (zerop (test-sequences-module)))
